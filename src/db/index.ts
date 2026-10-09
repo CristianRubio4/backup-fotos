@@ -69,9 +69,11 @@ interface Schema extends DBSchema {
   hashCache: { key: string; value: { size: number; lastModified: number; hash: string } }
   diskIndex: { key: string; value: DiskIndex }
   deletions: { key: number; value: DeletionRecord }
+  /** Modo compatible: hashes ya exportados en ZIP desde este navegador. */
+  exported: { key: string; value: { at: string; zip: string } }
 }
 
-const dbp = openDB<Schema>('backup-fotos', 2, {
+const dbp = openDB<Schema>('backup-fotos', 3, {
   upgrade(db, oldVersion) {
     if (oldVersion < 1) {
       db.createObjectStore('kv')
@@ -84,6 +86,7 @@ const dbp = openDB<Schema>('backup-fotos', 2, {
       db.createObjectStore('diskIndex', { keyPath: 'diskId' })
       db.createObjectStore('deletions', { keyPath: 'id', autoIncrement: true })
     }
+    if (oldVersion < 3) db.createObjectStore('exported')
   },
 })
 
@@ -174,6 +177,17 @@ export const db = {
   },
   async addDeletion(r: DeletionRecord) {
     await (await dbp).add('deletions', r)
+  },
+  async exportedHashes() {
+    return new Set(await (await dbp).getAllKeys('exported'))
+  },
+  async addExported(hashes: string[], zip: string) {
+    const tx = (await dbp).transaction('exported', 'readwrite')
+    const at = new Date().toISOString()
+    await Promise.all([...hashes.map((h) => tx.store.put({ at, zip }, h)), tx.done])
+  },
+  async clearExported() {
+    await (await dbp).clear('exported')
   },
   async listDeletions() {
     return (await (await dbp).getAll('deletions')).reverse()

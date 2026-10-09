@@ -33,6 +33,8 @@ export interface Settings {
   staleDays: number
   /** Recordar comprobar la integridad del disco cada estos meses. */
   integrityMonths: number
+  /** Modo compatible: tamaño máximo de cada ZIP (MB). */
+  zipBatchMB: number
   filters: FilterSettings
 }
 
@@ -57,6 +59,7 @@ export const DEFAULT_SETTINGS: Settings = {
   layout: 'together',
   staleDays: 30,
   integrityMonths: 6,
+  zipBatchMB: typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 300 : 1000,
   filters: DEFAULT_FILTERS,
 }
 

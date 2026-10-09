@@ -22,3 +22,8 @@ export function formatDateTime(iso: string) {
 export function daysSince(iso: string, now = Date.now()) {
   return Math.floor((now - new Date(iso).getTime()) / 86_400_000)
 }
+
+/** 1 foto / 2 fotos */
+export function plural(n: number, one: string, many: string) {
+  return `${n.toLocaleString('es-ES')} ${n === 1 ? one : many}`
+}

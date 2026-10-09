@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Thumb } from '../components/Thumb'
+import { Eraser } from 'lucide-react'
 import { Alert, Button, Card, Toggle } from '../components/ui'
 import { formatBytes } from '../core/format'
 import { activeDisk, useApp } from '../state/app'
@@ -35,7 +36,7 @@ export function FreeSpace() {
   if (isIOS) {
     return (
       <Card title="Liberar espacio">
-        <p className="text-sm text-slate-600 dark:text-slate-300">
+        <p className="text-sm text-muted">
           En iPhone y iPad una web no puede borrar fotos de la Fototeca. Cuando tengas el backup hecho y comprobado, bórralas desde la app Fotos.
         </p>
       </Card>
@@ -43,8 +44,8 @@ export function FreeSpace() {
   }
 
   return (
-    <Card title="Liberar espacio">
-      <p className="text-sm text-slate-600 dark:text-slate-300">
+    <Card title="Liberar espacio" icon={Eraser}>
+      <p className="text-sm text-muted">
         Borra de las carpetas de origen las fotos que ya están <b>verificadas</b> en el backup (su copia se comprobó por hash). Nunca se ofrecen
         las "no verificadas" ni las "posibles versiones reducidas". Justo antes de borrar cada foto se vuelve a comprobar su copia.
       </p>
@@ -58,7 +59,7 @@ export function FreeSpace() {
             Liberados {formatBytes(result.bytes)} ({result.deleted.length} archivos).
             {result.skipped.length > 0 && ` ${result.skipped.length} no se han borrado por seguridad: ${result.skipped.slice(0, 3).map((s) => `${s.candidate.file.relPath} (${s.reason})`).join('; ')}…`}
           </Alert>
-          <p className="text-xs text-slate-500">Lo borrado queda anotado en Historial.</p>
+          <p className="text-xs text-muted">Lo borrado queda anotado en Historial.</p>
           <Button variant="ghost" onClick={reset}>Cerrar</Button>
         </div>
       )}
@@ -90,10 +91,10 @@ export function FreeSpace() {
                   const on = !excluded.has(c.file.relPath)
                   return (
                     <li key={c.file.relPath}>
-                      <label className="flex cursor-pointer items-center gap-2 rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800">
+                      <label className="flex cursor-pointer items-center gap-2 rounded-lg p-1 hover:bg-surface-2">
                         <input
                           type="checkbox"
-                          className="h-4 w-4 accent-rose-600"
+                          className="h-4 w-4 accent-[var(--danger)]"
                           checked={on}
                           onChange={() => {
                             const s = new Set(excluded)
@@ -105,7 +106,7 @@ export function FreeSpace() {
                         <Thumb file={c.file} size={48} />
                         <span className="min-w-0 text-xs">
                           <span className="block truncate font-medium" title={c.file.relPath}>{c.file.relPath}</span>
-                          <span className="text-slate-500">{formatBytes(c.file.size)} · en {c.disks.length} {c.disks.length === 1 ? 'disco' : 'discos'}: {c.disks.join(', ')}</span>
+                          <span className="text-muted">{formatBytes(c.file.size)} · en {c.disks.length} {c.disks.length === 1 ? 'disco' : 'discos'}: {c.disks.join(', ')}</span>
                         </span>
                       </label>
                     </li>
@@ -113,13 +114,13 @@ export function FreeSpace() {
                 })}
               </ul>
               {pool.length > shown && <Button variant="ghost" onClick={() => setShown(shown + SHOW)}>Ver más ({pool.length - shown})</Button>}
-              <div className="rounded-xl border border-rose-300 p-3 dark:border-rose-900">
+              <div className="rounded-xl border border-danger/40 p-4">
                 <p className="text-sm">
                   Se borrarán <b>{chosen.length}</b> archivos ({formatBytes(bytes)}) de las carpetas de origen. Esta acción no se puede deshacer
                   desde la app (según el sistema, puede que tampoco vayan a la papelera). Escribe <b>{CONFIRM_WORD}</b> para confirmar:
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <input className="rounded-lg border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-800" value={typed} onChange={(e) => setTyped(e.target.value)} aria-label={`Escribe ${CONFIRM_WORD}`} />
+                  <input className="field py-1" value={typed} onChange={(e) => setTyped(e.target.value)} aria-label={`Escribe ${CONFIRM_WORD}`} />
                   <Button variant="danger" disabled={busy || typed !== CONFIRM_WORD || chosen.length === 0} onClick={() => runDelete(chosen)}>
                     Borrar {chosen.length} archivos del origen
                   </Button>

@@ -1,5 +1,6 @@
 import { JobProgress } from '../components/JobProgress'
-import { Alert, Button, Card } from '../components/ui'
+import { FileArchive, FileCog, FolderSearch, ScanSearch } from 'lucide-react'
+import { Alert, Button, Card, PageHeader } from '../components/ui'
 import type { ManifestEntry } from '../core/manifest/schema'
 import { formatBytes, formatDateTime } from '../core/format'
 import { activeDisk, useApp } from '../state/app'
@@ -16,7 +17,7 @@ function EntryList({ title, entries }: { title: string; entries: ManifestEntry[]
       <ul className="mt-1 max-h-60 space-y-1 overflow-auto text-xs">
         {entries.slice(0, 300).map((e) => (
           <li key={e.hash}>
-            <span className="break-all font-medium">{e.diskPath}</span> <span className="text-slate-500">· {formatBytes(e.size)} · {e.originalName}</span>
+            <span className="break-all font-medium">{e.diskPath}</span> <span className="text-muted">· {formatBytes(e.size)} · {e.originalName}</span>
           </li>
         ))}
       </ul>
@@ -32,9 +33,10 @@ export function ToolsScreen() {
 
   return (
     <>
+      <PageHeader title="Herramientas" subtitle="Comprobar, explorar, restaurar y liberar espacio" />
       {!disk && <Alert tone="warn">Conecta un disco de backup para usar las herramientas.</Alert>}
       {disk && (
-        <p className="text-sm text-slate-600 dark:text-slate-300">
+        <p className="text-sm text-muted">
           Disco: <b>{disk.name}</b>
           {disk.lastCheckAt ? ` · última comprobación: ${formatDateTime(disk.lastCheckAt)}` : ' · nunca se ha comprobado'}
         </p>
@@ -46,8 +48,8 @@ export function ToolsScreen() {
       )}
       <JobProgress />
 
-      <Card title="Comprobar disco">
-        <p className="text-sm text-slate-600 dark:text-slate-300">
+      <Card title="Comprobar disco" icon={ScanSearch}>
+        <p className="text-sm text-muted">
           Relee todo lo guardado en el disco y lo compara con su huella (hash) del manifest, para detectar archivos dañados o que han
           desaparecido. Tarda tanto como leer todo el disco.
         </p>
@@ -79,8 +81,8 @@ export function ToolsScreen() {
         )}
       </Card>
 
-      <Card title="Explorar y restaurar">
-        <p className="text-sm text-slate-600 dark:text-slate-300">
+      <Card title="Explorar y restaurar" icon={FolderSearch}>
+        <p className="text-sm text-muted">
           Ver lo que hay en el disco por fecha, dispositivo o tipo, y copiar fotos de vuelta a una carpeta.
           {disk?.encrypted ? ' En este disco cifrado, al restaurar se descifran.' : ' (En un disco sin cifrar también puedes abrir las fotos directamente desde cualquier ordenador.)'}
         </p>
@@ -92,8 +94,18 @@ export function ToolsScreen() {
 
       <FreeSpace />
 
-      <Card title="Mantenimiento del manifest">
-        <p className="text-sm text-slate-600 dark:text-slate-300">
+      <Card title="Exportar a ZIP" icon={FileArchive}>
+        <p className="text-sm text-muted">
+          El modo compatible prepara archivos ZIP en lugar de escribir en el disco (con el mismo análisis y antiduplicados). Útil para pasar
+          fotos a alguien o a un disco conectado a otro equipo.
+        </p>
+        <a className="mt-3 inline-flex h-10 items-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium hover:bg-surface-2" href={`${import.meta.env.BASE_URL}?compatible`}>
+          <FileArchive size={16} aria-hidden /> Abrir el modo compatible
+        </a>
+      </Card>
+
+      <Card title="Mantenimiento del manifest" icon={FileCog}>
+        <p className="text-sm text-muted">
           <b>Incorporar archivos sueltos</b>: registra fotos que están en el disco pero no en el manifest (copiadas a mano o desde los ZIP del
           modo compatible), para que no se vuelvan a copiar.
         </p>
@@ -103,8 +115,8 @@ export function ToolsScreen() {
             Incorporados: {t.incorporate.added}. Repetidos dentro del disco: {t.incorporate.duplicatesOnDisk.length}. Ilegibles: {t.incorporate.unreadable.length}.
           </p>
         )}
-        <hr className="my-4 border-slate-200 dark:border-slate-800" />
-        <p className="text-sm text-slate-600 dark:text-slate-300">
+        <hr className="my-4 border-line" />
+        <p className="text-sm text-muted">
           <b>Reconstruir manifest</b>: solo si el manifest y su copia (.bak) están dañados o se han perdido. Escanea el disco y vuelve a
           registrar todo lo que hay. Se pierden los nombres y rutas originales del origen, pero no ninguna foto, y se guarda una copia del
           manifest dañado.

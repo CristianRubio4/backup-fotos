@@ -68,6 +68,8 @@ export interface ExifInfo {
   /** Dimensiones declaradas en el EXIF (para detectar versiones reducidas). */
   width?: number
   height?: number
+  /** Fabricante de la cámara (p. ej. "Apple"). */
+  make?: string
 }
 
 export type ExifReader = (file: Blob) => Promise<ExifInfo>

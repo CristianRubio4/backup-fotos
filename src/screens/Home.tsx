@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { AlertTriangle, Check, FolderPlus, FolderOpen, HardDrive, HardDriveDownload, Lock, MoreHorizontal, Plus, ShieldCheck, Smartphone } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { statusLabel } from '../components/DiskBadge'
-import { Alert, Button, Card } from '../components/ui'
+import { Alert, Badge, Button, Card, PageHeader, StatusDot } from '../components/ui'
 import { UnlockDisk } from '../components/UnlockDisk'
 import { daysSince, formatDateTime } from '../core/format'
 import type { DiskRecord } from '../db'
-import { capabilities } from '../platform/capabilities'
-import { activeDisk, useApp } from '../state/app'
+import { activeDisk, useApp, type SourceView } from '../state/app'
 import { isLocked, useKeys } from '../state/keys'
 
 const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
@@ -18,182 +18,177 @@ const ANDROID_FOLDERS: Array<[string, string]> = [
   ['Descargas', 'Download (Android no deja elegir su raíz: elige una subcarpeta)'],
 ]
 
+function ago(iso: string) {
+  const d = daysSince(iso)
+  return d === 0 ? 'hoy' : d === 1 ? 'ayer' : `hace ${d} días`
+}
+
+function DiskMenu({ disk }: { disk: DiskRecord }) {
+  const { running, renameDisk, removeDisk } = useApp()
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative">
+      <button className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg" aria-label={`Opciones de ${disk.name}`} aria-expanded={open} onClick={() => setOpen(!open)} disabled={running}>
+        <MoreHorizontal size={18} />
+      </button>
+      {open && (
+        <div className="animate-rise absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-[var(--shadow-pop)]" onMouseLeave={() => setOpen(false)}>
+          <button
+            className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2"
+            onClick={() => {
+              setOpen(false)
+              const n = prompt('Nuevo nombre del disco', disk.name)
+              if (n) void renameDisk(disk.key, n)
+            }}
+          >
+            Renombrar
+          </button>
+          <button
+            className="w-full rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-surface-2"
+            onClick={() => {
+              setOpen(false)
+              if (confirm(`¿Olvidar "${disk.name}" en esta app? No se borra nada del disco; podrás volver a añadirlo.`)) void removeDisk(disk.key)
+            }}
+          >
+            Olvidar en esta app
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DiskRow({ disk, active, showUse }: { disk: DiskRecord; active: boolean; showUse: boolean }) {
-  const { diskStates, settings, running, setActiveDisk, grantDisk, renameDisk, removeDisk } = useApp()
+  const { diskStates, settings, setActiveDisk, grantDisk } = useApp()
   useKeys()
-  const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(disk.name)
   const status = diskStates[disk.key]
-  const [dot, text] = statusLabel(status, disk.name)
+  const [, text] = statusLabel(status, disk.name)
   const days = disk.lastBackupAt ? daysSince(disk.lastBackupAt) : null
   const stale = days === null || days > settings.staleDays
+  const tone = status?.state === 'connected' ? 'ok' : status?.state === 'needs-permission' ? 'warn' : status ? 'off' : 'pending'
 
   return (
-    <li className={`rounded-xl border p-3 ${active ? 'border-emerald-400 dark:border-emerald-700' : 'border-slate-200 dark:border-slate-800'}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          {editing ? (
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault()
-                void renameDisk(disk.key, name).then(() => setEditing(false))
-              }}
-            >
-              <input className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800" value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={60} />
-              <Button type="submit" className="px-2 py-1 text-xs">Guardar</Button>
-            </form>
-          ) : (
-            <p className="font-medium">
-              💽 {disk.name} {disk.encrypted && <span title="Disco cifrado">🔒</span>}
-              {active && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200">destino</span>}
-            </p>
-          )}
-          <p className="mt-0.5 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-            <span className={`h-2 w-2 rounded-full ${dot}`} aria-hidden /> {status?.state === 'connected' ? 'Conectado' : text.replace(`${disk.name}: `, '')}
-          </p>
-          <p className={`text-xs ${stale ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
-            {disk.lastBackupAt ? `Último backup: ${formatDateTime(disk.lastBackupAt)} (hace ${days} días)` : 'Todavía sin backups desde esta app'}
-          </p>
+    <li className={`cv-auto rounded-2xl border p-3 transition ${active ? 'border-accent/50 bg-accent-soft/40' : 'border-line'}`}>
+      <div className="flex items-center gap-3">
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${status?.state === 'connected' ? 'bg-accent-soft text-accent-strong' : 'bg-surface-2 text-subtle'}`}>
+          {disk.encrypted ? <Lock size={18} aria-hidden /> : <HardDrive size={18} aria-hidden />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate font-medium">{disk.name}</span>
+            {active && <Badge tone="accent">Destino</Badge>}
+            {disk.encrypted && <Badge>{isLocked(disk) ? 'Cifrado · bloqueado' : 'Cifrado'}</Badge>}
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <StatusDot tone={tone} /> {status?.state === 'connected' ? 'Conectado' : text.replace(`${disk.name}: `, '')}
+            </span>
+            <span className={stale ? 'text-warn' : ''}>{disk.lastBackupAt ? `Último backup ${ago(disk.lastBackupAt)}` : 'Sin backups todavía'}</span>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-1">
-          {status?.state === 'needs-permission' && (
-            <Button variant="primary" className="px-3 py-1 text-xs" onClick={() => grantDisk(disk.key)}>
-              Permitir acceso al disco
-            </Button>
-          )}
-          {showUse && !active && status?.state === 'connected' && (
-            <Button className="px-3 py-1 text-xs" onClick={() => setActiveDisk(disk.key)}>Usar este</Button>
-          )}
-          {!editing && <Button variant="ghost" className="px-2 py-1 text-xs" disabled={running} onClick={() => setEditing(true)}>Renombrar</Button>}
-          <Button
-            variant="ghost"
-            className="px-2 py-1 text-xs"
-            disabled={running}
-            onClick={() => confirm(`¿Olvidar "${disk.name}" en esta app? No se borra nada del disco; podrás volver a añadirlo.`) && removeDisk(disk.key)}
-          >
-            Olvidar
-          </Button>
-        </div>
+        {status?.state === 'needs-permission' && <Button size="sm" variant="primary" onClick={() => grantDisk(disk.key)}>Permitir</Button>}
+        {showUse && !active && status?.state === 'connected' && <Button size="sm" onClick={() => setActiveDisk(disk.key)}>Usar este</Button>}
+        <DiskMenu disk={disk} />
       </div>
       {disk.encrypted && status?.state === 'connected' && isLocked(disk) && <UnlockDisk disk={disk} />}
     </li>
   )
 }
 
+function SourceRow({ s }: { s: SourceView }) {
+  const { running, grantSource, removeSource } = useApp()
+  return (
+    <li className="cv-auto flex items-center gap-3 rounded-2xl border border-line p-3">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-2 text-muted">
+        <FolderOpen size={18} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium">{s.name}</div>
+        <div className="text-xs text-muted">
+          {s.perm === 'granted' ? 'Con acceso · incluye subcarpetas' : s.perm === 'prompt' ? 'Se pedirá permiso al empezar' : 'Acceso denegado: quítala y vuelve a añadirla'}
+        </div>
+      </div>
+      {s.perm === 'prompt' && <Button size="sm" onClick={() => grantSource(s.key)}>Permitir</Button>}
+      <Button size="sm" variant="ghost" disabled={running} onClick={() => removeSource(s.key)}>Quitar</Button>
+    </li>
+  )
+}
+
+function Step({ done, children }: { done: boolean; children: ReactNode }) {
+  return (
+    <li className="flex items-center gap-3 text-sm">
+      <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${done ? 'bg-ok text-white' : 'border border-line text-subtle'}`}>{done ? <Check size={14} strokeWidth={3} /> : null}</span>
+      <span className={done ? 'text-muted line-through decoration-line' : ''}>{children}</span>
+    </li>
+  )
+}
+
 export function HomeScreen() {
-  const { sources, disks, diskStates, settings, running, addSource, removeSource, grantSource, addDisk, start, go } = useApp()
+  const { sources, disks, diskStates, settings, running, addSource, addDisk, start, go } = useApp()
   useKeys()
   const [showTips, setShowTips] = useState(false)
 
-  if (!capabilities.fsAccess) {
-    return (
-      <Alert tone="warn">
-        <p className="font-medium">Este navegador no permite escribir directamente en un disco.</p>
-        <p className="mt-1">
-          Usa el <b>modo compatible</b>: eliges las fotos, la app las analiza y prepara archivos ZIP que guardas tú en el disco.
-        </p>
-        <Button variant="primary" className="mt-2" onClick={() => go('home')}>Abrir el modo compatible</Button>
-      </Alert>
-    )
-  }
-
   const disk = activeDisk()
   const connectedCount = disks.filter((d) => diskStates[d.key]?.state === 'connected').length
+  const lastBackup = disks.map((d) => d.lastBackupAt).filter(Boolean).sort().at(-1)
 
-  // Avisos pendientes
   const warnings: string[] = []
   for (const d of disks) {
-    if (!d.lastBackupAt) continue
-    const days = daysSince(d.lastBackupAt)
-    if (days > settings.staleDays) warnings.push(`"${d.name}" lleva ${days} días sin backup.`)
-    const checkedDays = d.lastCheckAt ? daysSince(d.lastCheckAt) : daysSince(d.addedAt)
-    if (checkedDays > settings.integrityMonths * 30) {
-      warnings.push(`Toca comprobar la integridad de "${d.name}" (${d.lastCheckAt ? `última comprobación hace ${checkedDays} días` : 'nunca se ha comprobado'}). Herramientas → Comprobar disco.`)
-    }
+    if (d.lastBackupAt && daysSince(d.lastBackupAt) > settings.staleDays) warnings.push(`"${d.name}" lleva ${daysSince(d.lastBackupAt)} días sin backup.`)
+    const checkedDays = d.lastCheckAt ? daysSince(d.lastCheckAt) : d.lastBackupAt ? daysSince(d.addedAt) : 0
+    if (checkedDays > settings.integrityMonths * 30) warnings.push(`Toca comprobar la integridad de "${d.name}" (${d.lastCheckAt ? `última vez ${ago(d.lastCheckAt)}` : 'nunca se ha comprobado'}).`)
   }
-  if (disks.length === 1) warnings.push('Solo tienes un disco de backup. Lo ideal es rotar dos y guardar uno fuera de casa (regla 3-2-1, ver Ayuda).')
+  if (disks.length === 1) warnings.push('Solo tienes un disco de backup. Lo ideal es rotar dos y guardar uno fuera de casa (regla 3-2-1).')
 
   const sourcesReady = sources.length > 0 && sources.some((s) => s.perm !== 'denied')
-  const ready = !!disk && sourcesReady && !(disk.encrypted && isLocked(disk))
+  const locked = !!disk?.encrypted && isLocked(disk)
+  const ready = !!disk && sourcesReady && !locked
 
   return (
     <>
-      <Card title="Discos de backup" actions={<Button variant="ghost" onClick={addDisk} disabled={running}>+ Añadir disco</Button>}>
-        {disks.length === 0 ? (
-          <div className="space-y-2">
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              Conecta el disco externo y elige (o crea) la carpeta donde se guardarán las copias, por ejemplo <i>Backup fotos</i>.
-            </p>
-            <Button variant="primary" onClick={addDisk}>Elegir carpeta en el disco</Button>
-          </div>
-        ) : (
-          <>
-            <p className="mb-2 text-sm font-medium">{connectedCount ? `Disco conectado: ${disk?.name ?? ''}` : 'Ningún disco conectado'}</p>
-            <ul className="space-y-2">
-              {disks.map((d) => (
-                <DiskRow key={d.key} disk={d} active={d.key === disk?.key} showUse={connectedCount > 1} />
-              ))}
-            </ul>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Si un disco conectado aparece como "no conectado" (p. ej. Windows le ha dado otra letra), pulsa "+ Añadir disco" y elige de nuevo su carpeta de backup: la app lo reconoce.
-            </p>
-          </>
-        )}
-      </Card>
+      <PageHeader
+        title="Tus fotos, a salvo"
+        subtitle={lastBackup ? `Último backup ${ago(lastBackup)} · ${formatDateTime(lastBackup)}` : 'Copia tus fotos y vídeos en un disco externo sin que salgan de tu dispositivo.'}
+      />
 
-      <Card title="Fotos que copiar" actions={<Button variant="ghost" onClick={addSource} disabled={running}>+ Añadir carpeta</Button>}>
-        {sources.length === 0 ? (
-          <div className="space-y-2">
-            <p className="text-sm text-slate-600 dark:text-slate-300">Añade las carpetas con tus fotos y vídeos: cámara, capturas, WhatsApp, Telegram, descargas…</p>
-            <Button variant="primary" onClick={addSource}>Elegir carpeta de fotos</Button>
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {sources.map((s) => (
-              <li key={s.key} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <div>
-                  <p className="font-medium">📁 {s.name}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {s.perm === 'granted' ? 'Con acceso · incluye subcarpetas' : s.perm === 'prompt' ? 'Hay que permitir el acceso (se pedirá al hacer el backup)' : 'Acceso denegado: quítala y vuelve a añadirla'}
-                  </p>
+      {/* Tarjeta principal */}
+      <section className="card animate-rise relative overflow-hidden p-5 sm:p-7">
+        <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-accent/10 blur-3xl" aria-hidden />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
+            {ready ? (
+              <>
+                <div className="flex items-center gap-2 text-sm font-medium text-ok">
+                  <ShieldCheck size={16} aria-hidden /> Todo listo
                 </div>
-                <div className="flex gap-1">
-                  {s.perm === 'prompt' && <Button className="px-3 py-1 text-xs" onClick={() => grantSource(s.key)}>Permitir</Button>}
-                  <Button variant="ghost" className="px-2 py-1 text-xs" disabled={running} onClick={() => removeSource(s.key)}>Quitar</Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        {isAndroid && (
-          <div className="mt-3">
-            <button className="text-xs text-emerald-700 underline dark:text-emerald-400" onClick={() => setShowTips(!showTips)}>
-              ¿Qué carpetas añadir en Android?
-            </button>
-            {showTips && (
-              <div className="mt-2 rounded-lg bg-slate-100 p-3 text-xs dark:bg-slate-800">
-                <ul className="space-y-1">
-                  {ANDROID_FOLDERS.map(([n, p]) => (
-                    <li key={n}>
-                      <b>{n}:</b> {p}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-2">
-                  Android no permite elegir la raíz del almacenamiento, la carpeta Download entera ni <i>Android/data</i>. Si una carpeta no se
-                  puede seleccionar, es una restricción de Android: elige sus subcarpetas o usa el modo compatible (selector de archivos).
+                <h2 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">Backup en {disk!.name}</h2>
+                <p className="mt-1 text-sm text-muted">
+                  {sources.length} {sources.length === 1 ? 'carpeta' : 'carpetas'} de origen · solo se copia lo nuevo · cada copia se verifica
                 </p>
-              </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-semibold tracking-tight">Prepara tu primer backup</h2>
+                <ol className="mt-3 space-y-2">
+                  <Step done={disks.length > 0}>Añade la carpeta de backup en tu disco externo</Step>
+                  <Step done={sources.length > 0}>Añade las carpetas con tus fotos</Step>
+                  <Step done={connectedCount > 0}>Conecta el disco</Step>
+                  {locked && <Step done={false}>Desbloquea el disco cifrado con su contraseña</Step>}
+                </ol>
+              </>
             )}
           </div>
-        )}
-      </Card>
+          {running ? (
+            <Button size="xl" variant="primary" icon={HardDriveDownload} onClick={() => go('progress')}>Ver el backup</Button>
+          ) : (
+            <Button size="xl" variant="primary" icon={HardDriveDownload} disabled={!ready} onClick={() => void start()}>Hacer backup</Button>
+          )}
+        </div>
+      </section>
 
       {warnings.length > 0 && (
         <Alert tone="warn">
-          <p className="font-medium">Avisos</p>
-          <ul className="mt-1 list-disc pl-5">
+          <ul className="space-y-1">
             {warnings.map((w) => (
               <li key={w}>{w}</li>
             ))}
@@ -201,15 +196,76 @@ export function HomeScreen() {
         </Alert>
       )}
 
-      {running ? (
-        <Button variant="primary" className="py-4 text-lg" onClick={() => go('progress')}>Ver el backup en curso</Button>
-      ) : (
-        <Button variant="primary" className="py-5 text-lg" disabled={!ready} onClick={() => void start()}>
-          {disk ? `Hacer backup en ${disk.name}` : 'Hacer backup'}
-        </Button>
-      )}
-      <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-        Nunca se borra ni se modifica nada en las carpetas de origen. Las fotos que ya están en el disco no se vuelven a copiar.
+      <div className="grid gap-5 md:grid-cols-2">
+        <Card
+          title="Discos de backup"
+          icon={HardDrive}
+          description={connectedCount ? `${connectedCount} conectado${connectedCount > 1 ? 's' : ''}` : 'Ningún disco conectado'}
+          actions={<Button size="sm" icon={Plus} onClick={addDisk} disabled={running}>Añadir</Button>}
+        >
+          {disks.length === 0 ? (
+            <button onClick={addDisk} className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-line p-6 text-sm text-muted transition hover:border-accent hover:text-fg">
+              <HardDrive size={24} aria-hidden />
+              Elige (o crea) una carpeta en tu disco externo
+            </button>
+          ) : (
+            <ul className="space-y-2">
+              {disks.map((d) => (
+                <DiskRow key={d.key} disk={d} active={d.key === disk?.key} showUse={connectedCount > 1} />
+              ))}
+            </ul>
+          )}
+          {disks.length > 0 && (
+            <p className="mt-3 text-xs text-muted">¿Un disco conectado aparece como no conectado (otra letra en Windows)? Pulsa "Añadir" y elige de nuevo su carpeta: la app lo reconoce.</p>
+          )}
+        </Card>
+
+        <Card
+          title="Fotos que copiar"
+          icon={FolderOpen}
+          description="Cámara, capturas, WhatsApp, Telegram…"
+          actions={<Button size="sm" icon={FolderPlus} onClick={addSource} disabled={running}>Añadir</Button>}
+        >
+          {sources.length === 0 ? (
+            <button onClick={addSource} className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-line p-6 text-sm text-muted transition hover:border-accent hover:text-fg">
+              <FolderPlus size={24} aria-hidden />
+              Elige la carpeta con tus fotos y vídeos
+            </button>
+          ) : (
+            <ul className="space-y-2">
+              {sources.map((s) => (
+                <SourceRow key={s.key} s={s} />
+              ))}
+            </ul>
+          )}
+          {isAndroid && (
+            <div className="mt-3">
+              <button className="inline-flex items-center gap-1.5 text-xs font-medium text-accent-strong" onClick={() => setShowTips(!showTips)} aria-expanded={showTips}>
+                <Smartphone size={14} aria-hidden /> ¿Qué carpetas añadir en Android?
+              </button>
+              {showTips && (
+                <div className="animate-rise mt-2 rounded-xl bg-surface-2 p-3 text-xs leading-relaxed">
+                  <ul className="space-y-1">
+                    {ANDROID_FOLDERS.map(([n, p]) => (
+                      <li key={n}>
+                        <b>{n}:</b> {p}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 flex gap-1.5 text-muted">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden />
+                    Android no deja elegir la raíz del almacenamiento, la carpeta Download entera ni Android/data. Si una carpeta no se puede
+                    seleccionar, es una restricción de Android: elige sus subcarpetas.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <p className="flex items-center justify-center gap-1.5 text-center text-xs text-subtle">
+        <ShieldCheck size={13} aria-hidden /> Nunca se borra ni se modifica nada en tus carpetas de origen.
       </p>
     </>
   )

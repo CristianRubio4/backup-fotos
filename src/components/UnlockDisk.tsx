@@ -47,7 +47,7 @@ export function UnlockDisk({ disk }: { disk: DiskRecord }) {
         onChange={(e) => setPassword(e.target.value)}
       />
       <Button type="submit" variant="primary" disabled={busy || !password}>{busy ? 'Comprobando…' : 'Desbloquear'}</Button>
-      {error && <p className="w-full text-xs text-rose-600 dark:text-rose-400" role="alert">{error}</p>}
+      {error && <p className="w-full text-xs text-danger" role="alert">{error}</p>}
     </form>
   )
 }

@@ -1,4 +1,5 @@
-import { Alert, Button, Card, ProgressBar, Stat } from '../components/ui'
+import { AlertOctagon, Ban, Check, Copy, Files, Pause, Play, ShieldQuestion, Square, Sun, Unplug } from 'lucide-react'
+import { Alert, Button, Card, PageHeader, ProgressRing, Stat } from '../components/ui'
 import { PHASES } from '../core/backup/progress'
 import { formatBytes, formatDuration } from '../core/format'
 import { activeDisk, useApp } from '../state/app'
@@ -8,113 +9,110 @@ export function ProgressScreen() {
   const disk = activeDisk()
   const diskName = disk?.name ?? 'el disco'
 
-  if (!running) return <p className="text-slate-500">No hay ningún backup en curso.</p>
-  if (!p) return <p className="text-slate-500">Preparando…</p>
+  if (!running) return <p className="text-muted">No hay ningún backup en curso.</p>
 
-  const pct = p.totalBytes > 0 ? (p.doneBytes / p.totalBytes) * 100 : 0
-  const current = PHASES.findIndex((ph) => ph.id === p.phase)
+  const pct = p && p.totalBytes > 0 ? (p.doneBytes / p.totalBytes) * 100 : 0
+  const current = p ? PHASES.findIndex((ph) => ph.id === p.phase) : 0
+  const state = p?.waitingDisk ? 'Esperando al disco' : paused ? 'En pausa' : (PHASES[current]?.label ?? 'Preparando')
 
   return (
     <>
-      {p.waitingDisk ? (
+      <PageHeader title="Haciendo backup" subtitle={`En ${diskName} · mantén esta pestaña abierta y el disco conectado`} />
+
+      {p?.waitingDisk && (
         <Alert tone="error">
           {waitReason === 'needs-permission' ? (
-            <>
-              <p className="font-medium">El disco ha vuelto, pero hay que permitir de nuevo el acceso.</p>
-              <Button variant="primary" className="mt-2" onClick={() => disk && grantDisk(disk.key)}>
-                Permitir acceso al disco
-              </Button>
-            </>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="font-medium">El disco ha vuelto, pero hay que permitir de nuevo el acceso.</span>
+              <Button variant="primary" size="sm" onClick={() => disk && grantDisk(disk.key)}>Permitir acceso al disco</Button>
+            </div>
           ) : waitReason === 'other-disk' ? (
-            <p className="font-medium">
-              Ese no es el disco de este backup. Conecta el disco <b>{diskName}</b>.
-            </p>
+            <span className="font-medium">Ese no es el disco de este backup. Conecta "{diskName}".</span>
           ) : (
             <>
-              <p className="font-medium">El disco se ha desconectado. El backup está en pausa.</p>
-              <p className="mt-1">
-                Vuelve a conectar <b>{diskName}</b> y el backup continuará solo, sin repetir nada. Si Windows le asigna otra letra, cancela y vuelve
-                a elegir la carpeta de backup: lo ya copiado no se repetirá.
-              </p>
+              <p className="flex items-center gap-2 font-medium"><Unplug size={16} aria-hidden /> El disco se ha desconectado. El backup está en pausa.</p>
+              <p className="mt-1 text-muted">Vuelve a conectar "{diskName}" y continuará solo, sin repetir nada. Si Windows le asigna otra letra, cancela y vuelve a añadir su carpeta: lo ya copiado no se repetirá.</p>
             </>
           )}
         </Alert>
-      ) : batteryPaused ? (
+      )}
+      {batteryPaused && (
         <Alert tone="warn">
           <p className="font-medium">Pausado: la batería ha bajado del 10 % ({battery ? Math.round(battery.level * 100) : '?'} %).</p>
-          <p className="mt-1">Conecta el cargador y pulsa Reanudar. Con el disco conectado por OTG el móvil normalmente no se carga, salvo con un hub USB con alimentación.</p>
-        </Alert>
-      ) : (
-        <Alert tone="info">
-          Mantén esta pestaña abierta y el disco conectado hasta que termine.
-          {wake === 'on' && ' La pantalla se mantendrá encendida.'}
-          {(wake === 'unsupported' || wake === 'failed') && ' Este navegador no puede mantener la pantalla encendida: evita que se bloquee.'}
+          <p className="mt-1 text-muted">Conecta el cargador y pulsa Reanudar. Con el disco conectado por OTG el móvil normalmente no se carga, salvo con un hub USB con alimentación.</p>
         </Alert>
       )}
 
-      <Card>
-        <ol className="mb-4 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-          {PHASES.map((ph, i) => (
-            <li
-              key={ph.id}
-              className={
-                i === current
-                  ? 'font-semibold text-emerald-600 dark:text-emerald-400'
-                  : i < current
-                    ? 'text-slate-500 line-through decoration-slate-300'
-                    : 'text-slate-400'
-              }
-            >
-              {i + 1}. {ph.label}
-            </li>
-          ))}
+      <section className="card animate-rise p-5 sm:p-7">
+        <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+          <ProgressRing value={pct}>
+            <div>
+              <div className="text-4xl font-semibold tracking-tight tabular-nums">{Math.floor(pct)}<span className="text-xl text-muted">%</span></div>
+              <div className="mt-0.5 text-xs text-muted">{p ? `${formatBytes(p.doneBytes)} de ${formatBytes(p.totalBytes)}` : '…'}</div>
+            </div>
+          </ProgressRing>
+          <div className="w-full min-w-0 flex-1 space-y-4">
+            <div>
+              <div className="text-lg font-semibold">{state}</div>
+              <div className="text-sm text-muted">
+                {p?.phase === 'scan' ? `${p.phaseDone} archivos encontrados` : p && p.phaseTotal > 0 ? `${Math.min(p.phaseDone + 1, p.phaseTotal)} de ${p.phaseTotal} archivos` : ''}
+              </div>
+              {p?.currentFile && <div className="mt-1 truncate font-mono text-xs text-subtle" title={p.currentFile}>{p.currentFile}</div>}
+            </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              <span><span className="text-muted">Velocidad </span><b className="tabular-nums">{p ? `${formatBytes(p.bytesPerSec)}/s` : '—'}</b></span>
+              <span><span className="text-muted">Quedan </span><b className="tabular-nums">{formatDuration(p?.etaSec ?? null)}</b></span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {paused ? (
+                <Button variant="primary" icon={Play} onClick={resume}>Reanudar</Button>
+              ) : (
+                <Button icon={Pause} onClick={pause}>Pausar</Button>
+              )}
+              <Button variant="ghost" icon={Square} onClick={() => confirm('¿Cancelar el backup? Lo ya copiado queda guardado y no se repetirá la próxima vez.') && cancel()}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Línea de fases */}
+        <ol className="mt-6 grid grid-cols-4 gap-2 sm:grid-cols-8" aria-label="Fases">
+          {PHASES.map((ph, i) => {
+            const done = i < current
+            const now = i === current
+            return (
+              <li key={ph.id} className="flex flex-col items-center gap-1.5 text-center">
+                <span className={`grid h-7 w-7 place-items-center rounded-full text-[11px] font-semibold transition ${done ? 'bg-accent text-accent-fg' : now ? 'bg-accent-soft text-accent-strong ring-2 ring-accent' : 'bg-surface-2 text-subtle'}`}>
+                  {done ? <Check size={14} strokeWidth={3} /> : i + 1}
+                </span>
+                <span className={`text-[10px] leading-tight ${now ? 'font-semibold text-fg' : 'text-muted'}`}>{ph.label}</span>
+              </li>
+            )
+          })}
         </ol>
+      </section>
 
-        <div className="mb-2 flex items-end justify-between">
-          <span className="text-4xl font-bold tabular-nums">{Math.floor(pct)}%</span>
-          <span className="text-sm text-slate-500 dark:text-slate-400">
-            {formatBytes(p.doneBytes)} de {formatBytes(p.totalBytes)}
-          </span>
+      {p && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <Stat label="Copiados" value={p.counters.copied} tone="ok" icon={Copy} />
+          <Stat label="Duplicados" value={p.counters.duplicates} icon={Files} />
+          <Stat label="Descartados" value={p.counters.discarded} tone={p.counters.discarded ? 'warn' : undefined} icon={Ban} />
+          <Stat label="No verificados" value={p.counters.unverified} tone={p.counters.unverified ? 'warn' : undefined} icon={ShieldQuestion} />
+          <Stat label="Errores" value={p.counters.errors} tone={p.counters.errors ? 'error' : undefined} icon={AlertOctagon} />
         </div>
-        <ProgressBar value={pct} large />
+      )}
 
-        <div className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
-          <span>
-            {p.waitingDisk ? '⏸ Esperando al disco' : paused ? '⏸ En pausa' : PHASES[current]?.label}
-            {p.phase === 'scan' ? ` · ${p.phaseDone} encontrados` : p.phaseTotal > 0 ? ` · ${Math.min(p.phaseDone + 1, p.phaseTotal)} de ${p.phaseTotal} archivos` : ''}
-          </span>
-          <span className="sm:text-right">
-            {formatBytes(p.bytesPerSec)}/s · quedan {formatDuration(p.etaSec)}
-          </span>
-        </div>
-        {p.currentFile && <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400" title={p.currentFile}>{p.currentFile}</p>}
+      <Card>
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <Sun size={16} aria-hidden />
+          {wake === 'on'
+            ? 'La pantalla se mantendrá encendida hasta que termine.'
+            : wake === 'unsupported' || wake === 'failed'
+              ? 'Este navegador no puede mantener la pantalla encendida: evita que se bloquee mientras dura el backup.'
+              : 'Mantén la pestaña visible para que el backup avance a buen ritmo.'}
+        </p>
       </Card>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <Stat label="Copiados" value={p.counters.copied} tone="ok" />
-        <Stat label="Duplicados omitidos" value={p.counters.duplicates} />
-        <Stat label="Descartados" value={p.counters.discarded} tone="warn" />
-        <Stat label="No verificados" value={p.counters.unverified} tone="warn" />
-        <Stat label="Errores" value={p.counters.errors} tone={p.counters.errors ? 'error' : undefined} />
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {paused ? (
-          <Button variant="primary" onClick={resume}>
-            ▶ Reanudar
-          </Button>
-        ) : (
-          <Button onClick={pause}>⏸ Pausar</Button>
-        )}
-        <Button
-          variant="danger"
-          onClick={() => {
-            if (confirm('¿Cancelar el backup? Lo ya copiado queda guardado y no se repetirá la próxima vez.')) cancel()
-          }}
-        >
-          Cancelar
-        </Button>
-      </div>
     </>
   )
 }

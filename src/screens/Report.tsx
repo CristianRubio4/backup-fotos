@@ -1,8 +1,9 @@
 import { Thumb } from '../components/Thumb'
-import { Alert, Button, Card, Stat } from '../components/ui'
+import { AlertOctagon, Ban, ClipboardCheck, Copy, Files, HardDrive, ShieldQuestion } from 'lucide-react'
+import { Alert, Button, Card, PageHeader, Stat } from '../components/ui'
 import type { DiscardCategory } from '../core/analysis/classify'
 import type { BackupReport, Outcome, ReportItem } from '../core/backup/engine'
-import { formatBytes, formatDuration } from '../core/format'
+import { formatBytes, formatDuration, plural } from '../core/format'
 import { scannedFile, useApp } from '../state/app'
 
 const OUTCOME: Record<Outcome, { tone: 'ok' | 'warn' | 'error'; text: string }> = {
@@ -33,20 +34,20 @@ const LIST_LIMIT = 300
 function ItemList({ title, items, showPath, open }: { title: string; items: ReportItem[]; showPath?: boolean; open?: boolean }) {
   if (items.length === 0) return null
   return (
-    <details open={open} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+    <details open={open} className="card p-4">
       <summary className="cursor-pointer text-sm font-medium">
-        {title} <span className="text-slate-500">({items.length})</span>
+        {title} <span className="text-muted">({items.length})</span>
       </summary>
       <ul className="mt-2 max-h-80 space-y-1 overflow-auto text-xs">
         {items.slice(0, LIST_LIMIT).map((it, i) => (
-          <li key={i} className="border-b border-slate-100 pb-1 last:border-0 dark:border-slate-800">
+          <li key={i} className="border-b border-line pb-1 last:border-0">
             <span className="font-medium break-all">{it.sourcePath}</span>
-            <span className="text-slate-500"> · {formatBytes(it.size)}</span>
-            {showPath && it.diskPath && <div className="break-all text-slate-500">→ {it.diskPath}</div>}
-            {it.reason && <div className="text-slate-500">{it.reason}</div>}
+            <span className="text-muted"> · {formatBytes(it.size)}</span>
+            {showPath && it.diskPath && <div className="break-all text-muted">→ {it.diskPath}</div>}
+            {it.reason && <div className="text-muted">{it.reason}</div>}
           </li>
         ))}
-        {items.length > LIST_LIMIT && <li className="text-slate-500">…y {items.length - LIST_LIMIT} más</li>}
+        {items.length > LIST_LIMIT && <li className="text-muted">…y {items.length - LIST_LIMIT} más</li>}
       </ul>
     </details>
   )
@@ -69,15 +70,15 @@ function Discarded({ items }: { items: ReportItem[] }) {
         </Button>
       }
     >
-      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+      <p className="mb-3 text-xs text-muted">
         No se han copiado, pero <b>siguen intactos en el origen</b>. Si alguno te interesa, cópialo igualmente: quedará marcado como "no verificado".
       </p>
-      {running && <p className="mb-2 text-sm text-emerald-600">Copiando…</p>}
+      {running && <p className="mb-2 text-sm text-ok">Copiando…</p>}
       <div className="space-y-4">
         {[...groups].map(([cat, list]) => (
           <div key={cat}>
             <h3 className="mb-2 text-sm font-semibold">
-              {CATEGORY[cat as DiscardCategory] ?? cat} <span className="font-normal text-slate-500">({list.length})</span>
+              {CATEGORY[cat as DiscardCategory] ?? cat} <span className="font-normal text-muted">({list.length})</span>
             </h3>
             <ul className="space-y-2">
               {list.slice(0, LIST_LIMIT).map((it) => (
@@ -87,7 +88,7 @@ function Discarded({ items }: { items: ReportItem[] }) {
                     <div className="truncate font-medium" title={it.sourcePath}>
                       {it.sourcePath}
                     </div>
-                    <div className="text-slate-500">
+                    <div className="text-muted">
                       {it.reason} · {formatBytes(it.size)}
                     </div>
                   </div>
@@ -96,7 +97,7 @@ function Discarded({ items }: { items: ReportItem[] }) {
                   </Button>
                 </li>
               ))}
-              {list.length > LIST_LIMIT && <li className="text-xs text-slate-500">…y {list.length - LIST_LIMIT} más</li>}
+              {list.length > LIST_LIMIT && <li className="text-xs text-muted">…y {list.length - LIST_LIMIT} más</li>}
             </ul>
           </div>
         ))}
@@ -125,40 +126,41 @@ function ManifestNotice({ report }: { report: BackupReport }) {
 
 export function ReportScreen() {
   const { report, go } = useApp()
-  if (!report) return <p className="text-slate-500">Todavía no hay ningún informe.</p>
+  if (!report) return <p className="text-muted">Todavía no hay ningún informe.</p>
 
   const o = OUTCOME[report.outcome]
   const secs = (new Date(report.finishedAt).getTime() - new Date(report.startedAt).getTime()) / 1000
 
   return (
     <>
+      <PageHeader title="Informe del backup" subtitle={new Date(report.finishedAt).toLocaleString('es-ES', { dateStyle: 'full', timeStyle: 'short' })} />
       <Alert tone={o.tone}>
         <p className="font-medium">{o.text}</p>
         {report.failure && <p className="mt-1 text-xs">{report.failure}</p>}
       </Alert>
       <ManifestNotice report={report} />
 
-      <Card title="Resumen">
+      <Card title="Resumen" icon={ClipboardCheck}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <Stat label="Copiados" value={report.copied.length + report.alreadyOnDisk.length} tone="ok" />
-          <Stat label="Duplicados omitidos" value={report.duplicates.length} />
-          <Stat label="Descartados" value={report.discarded.length} tone={report.discarded.length ? 'warn' : undefined} />
-          <Stat label="No verificados" value={report.unverified.length} tone={report.unverified.length ? 'warn' : undefined} />
-          <Stat label="Errores" value={report.errors.length + report.fat32.length} tone={report.errors.length + report.fat32.length ? 'error' : undefined} />
-          <Stat label="Datos copiados" value={formatBytes(report.bytesCopied)} />
+          <Stat label="Copiados" value={report.copied.length + report.alreadyOnDisk.length} tone="ok" icon={Copy} />
+          <Stat label="Duplicados omitidos" value={report.duplicates.length} icon={Files} />
+          <Stat label="Descartados" value={report.discarded.length} tone={report.discarded.length ? 'warn' : undefined} icon={Ban} />
+          <Stat label="No verificados" value={report.unverified.length} tone={report.unverified.length ? 'warn' : undefined} icon={ShieldQuestion} />
+          <Stat label="Errores" value={report.errors.length + report.fat32.length} tone={report.errors.length + report.fat32.length ? 'error' : undefined} icon={AlertOctagon} />
+          <Stat label="Datos copiados" value={formatBytes(report.bytesCopied)} icon={HardDrive} />
         </div>
-        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          {report.scanned} fotos y vídeos analizados en {formatDuration(secs)}.
-          {report.ignored.count > 0 && ` Se han ignorado ${report.ignored.count} archivos que no son fotos ni vídeos.`}
-          {report.livePhotos > 0 && ` ${report.livePhotos} Live Photos (foto + vídeo) se han guardado juntas con el mismo nombre.`}
-          {report.motionPhotos > 0 && ` ${report.motionPhotos} Motion Photos se han copiado con su vídeo incrustado.`}
-          {report.incorporated > 0 && ` ${report.incorporated} fotos que ya estaban en el disco (copiadas antes a mano) se han incorporado al registro sin tocarlas.`}
+        <p className="mt-3 text-xs text-muted">
+          {plural(report.scanned, 'foto o vídeo analizado', 'fotos y vídeos analizados')} en {formatDuration(secs)}.
+          {report.ignored.count > 0 && ` Se ${report.ignored.count === 1 ? 'ha' : 'han'} ignorado ${plural(report.ignored.count, 'archivo que no es foto ni vídeo', 'archivos que no son fotos ni vídeos')}.`}
+          {report.livePhotos > 0 && ` ${plural(report.livePhotos, 'Live Photo (foto + vídeo) se ha guardado junta', 'Live Photos (foto + vídeo) se han guardado juntas')} con el mismo nombre.`}
+          {report.motionPhotos > 0 && ` ${plural(report.motionPhotos, 'Motion Photo se ha copiado', 'Motion Photos se han copiado')} con su vídeo incrustado.`}
+          {report.incorporated > 0 && ` ${plural(report.incorporated, 'foto que ya estaba', 'fotos que ya estaban')} en el disco (copiadas antes a mano) se han incorporado al registro sin tocarlas.`}
         </p>
       </Card>
 
       {report.reduced.length > 0 && (
         <Alert tone="warn">
-          <p className="font-medium">{report.reduced.length} fotos podrían ser versiones reducidas.</p>
+          <p className="font-medium">{report.reduced.length === 1 ? 'Una foto podría ser una versión reducida.' : `${report.reduced.length} fotos podrían ser versiones reducidas.`}</p>
           <p className="mt-1">
             Su resolución es mucho menor que la que indica su EXIF: puede que el original esté solo en iCloud o Google Fotos ("optimizar
             almacenamiento"). Se han copiado igualmente. Descarga los originales al dispositivo y vuelve a hacer el backup (ver Ayuda).

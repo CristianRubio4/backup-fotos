@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
-import { Card } from '../components/ui'
+import { Card, PageHeader } from '../components/ui'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Card title={title}>
-      <div className="space-y-2 text-sm leading-relaxed text-slate-700 dark:text-slate-300">{children}</div>
+      <div className="space-y-2 text-sm leading-relaxed text-muted">{children}</div>
     </Card>
   )
 }
@@ -12,6 +12,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function HelpScreen() {
   return (
     <>
+      <PageHeader title="Ayuda" subtitle="Cómo funciona, límites del navegador y buenas prácticas" />
       <Section title="Cómo funciona">
         <p>
           La app recorre la carpeta de fotos, calcula una huella (hash SHA-256) de cada archivo y copia al disco solo lo que aún no está.
@@ -123,11 +124,44 @@ export function HelpScreen() {
         </p>
       </Section>
 
-      <Section title="Navegadores compatibles">
+      <Section title="Cifrado (opcional)">
         <p>
-          Esta versión necesita <b>Chrome o Edge de escritorio</b>, que permiten escribir en carpetas del disco. Safari, iPhone y Firefox
-          no lo permiten; para ellos habrá un modo compatible con archivos ZIP. Tampoco es posible saber desde el navegador cuánto espacio
-          libre tiene el disco: si se llena, el backup se detiene y avisa.
+          Puedes cifrar un disco nuevo con una contraseña (Ajustes → Cifrado). Se usa AES-256-GCM con una clave derivada con Argon2id; el
+          contenido, los nombres de archivo y el manifest quedan ilegibles sin la contraseña.
+        </p>
+        <p>
+          <b>Las fotos cifradas solo se pueden abrir con esta app y la contraseña. Si la olvidas, se pierden para siempre.</b> Para sacarlas,
+          usa Herramientas → "Descifrar todo el disco a una carpeta" o restaura desde Explorar. La contraseña nunca se guarda: hay que
+          escribirla cada vez que abres la app.
+        </p>
+      </Section>
+
+      <Section title="Navegadores compatibles">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <b>Modo completo</b> (backup automático en el disco): Chrome y Edge en Windows, macOS, Linux y ChromeOS, y Chrome en Android
+            (versión 132 o posterior).
+          </li>
+          <li>
+            <b>Modo compatible</b> (Safari en iPhone, iPad y Mac; Firefox): no permiten que una web escriba en el disco. La app analiza y
+            deduplica igual y prepara archivos ZIP que guardas tú en el disco. Liberar espacio no está disponible.
+          </li>
+        </ul>
+        <p>Desde el navegador no se puede saber cuánto espacio libre tiene el disco: si se llena, el backup se detiene y avisa.</p>
+      </Section>
+
+      <Section title="Instalar como app y usar sin conexión">
+        <p>
+          Puedes instalarla (Chrome/Edge: icono de instalar en la barra de direcciones; Android: menú → Instalar app; iPhone: Compartir →
+          Añadir a pantalla de inicio). Funciona sin conexión. Cuando hay una versión nueva, la app te avisa y tú decides cuándo actualizar;
+          nunca durante un backup.
+        </p>
+      </Section>
+
+      <Section title="Privacidad">
+        <p>
+          La app no tiene servidor ni analíticas, y está configurada para que el navegador le impida conectarse a ningún sitio (política de
+          seguridad de contenidos). Tus fotos y datos no salen nunca del dispositivo. El código es abierto.
         </p>
       </Section>
     </>

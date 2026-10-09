@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { JobProgress } from '../components/JobProgress'
-import { Alert, Button, Card } from '../components/ui'
+import { Alert, Button, Card, PageHeader } from '../components/ui'
 import { formatBytes } from '../core/format'
 import type { ManifestEntry } from '../core/manifest/schema'
 import { ManifestStore } from '../core/manifest/store'
@@ -73,7 +73,7 @@ function DiskThumb({ disk, entry, onOpen, selected, onToggle }: { disk: DiskReco
   }, [disk, entry])
 
   return (
-    <div ref={ref} className={`group relative aspect-square overflow-hidden rounded-lg bg-slate-200 dark:bg-slate-800 ${selected ? 'ring-2 ring-emerald-500' : ''}`}>
+    <div ref={ref} className={`group relative aspect-square overflow-hidden rounded-lg bg-surface-2 ${selected ? 'ring-2 ring-[var(--accent)]' : ''}`}>
       <button className="absolute inset-0 h-full w-full" onClick={onOpen} title={nameOf(entry)} aria-label={`Ver ${nameOf(entry)}`}>
         {src && src !== 'none' ? (
           src.video ? (
@@ -82,13 +82,13 @@ function DiskThumb({ disk, entry, onOpen, selected, onToggle }: { disk: DiskReco
             <img className="h-full w-full object-cover" src={src.url} alt="" />
           )
         ) : (
-          <span className="flex h-full items-center justify-center text-xs font-semibold uppercase text-slate-500">
-            {src === null ? '…' : isVideo(nameOf(entry)) ? '🎬' : extOf(nameOf(entry))}
+          <span className="flex h-full items-center justify-center text-xs font-semibold uppercase text-muted">
+            {src === null ? <span className="skeleton absolute inset-0" /> : isVideo(nameOf(entry)) ? 'vídeo' : extOf(nameOf(entry))}
           </span>
         )}
       </button>
-      <input type="checkbox" className="absolute top-1 left-1 h-4 w-4 accent-emerald-600" checked={selected} onChange={onToggle} aria-label="Seleccionar" />
-      {entry.status !== 'verified' && <span className="absolute right-1 bottom-1 rounded bg-amber-500 px-1 text-[10px] text-white">{entry.status === 'reduced' ? 'reducida' : 'no verif.'}</span>}
+      <input type="checkbox" className="absolute top-1 left-1 h-4 w-4 accent-[var(--accent)]" checked={selected} onChange={onToggle} aria-label="Seleccionar" />
+      {entry.status !== 'verified' && <span className="absolute right-1 bottom-1 rounded bg-warn px-1 text-[10px] text-white">{entry.status === 'reduced' ? 'reducida' : 'no verif.'}</span>}
     </div>
   )
 }
@@ -107,29 +107,29 @@ function Detail({ disk, entry, onClose }: { disk: DiskRecord; entry: ManifestEnt
   }, [disk, entry])
   const d = entryDate(entry)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose} role="dialog" aria-modal>
-      <div className="max-h-full w-full max-w-3xl overflow-auto rounded-2xl bg-white p-4 dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal>
+      <div className="max-h-full w-full max-w-3xl overflow-auto rounded-3xl border border-line bg-surface p-5 shadow-[var(--shadow-pop)]" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between gap-2">
           <h3 className="font-semibold break-all">{nameOf(entry)}</h3>
           <Button variant="ghost" onClick={onClose}>✕</Button>
         </div>
         {src === undefined ? (
-          <p className="text-sm text-slate-500">Cargando…</p>
+          <p className="text-sm text-muted">Cargando…</p>
         ) : src ? (
           src.video ? <video className="max-h-[60vh] w-full" src={src.url} controls /> : <img className="max-h-[60vh] w-full object-contain" src={src.url} alt="" />
         ) : (
-          <p className="text-sm text-slate-500">No se puede previsualizar este archivo en el navegador.</p>
+          <p className="text-sm text-muted">No se puede previsualizar este archivo en el navegador.</p>
         )}
         <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-          <dt className="text-slate-500">Fecha</dt><dd>{d ? d.toLocaleString('es-ES') : 'Sin fecha'}{entry.exifDate ? ' (EXIF)' : ' (archivo)'}</dd>
-          <dt className="text-slate-500">Tamaño</dt><dd>{formatBytes(entry.size)}</dd>
-          <dt className="text-slate-500">Dispositivo</dt><dd>{entry.deviceName}</dd>
-          <dt className="text-slate-500">Origen</dt><dd className="break-all">{entry.sourcePath || '—'}</dd>
-          <dt className="text-slate-500">En el disco</dt><dd className="break-all">{entry.diskPath}</dd>
-          <dt className="text-slate-500">Estado</dt><dd>{STATUS_LABEL[entry.status]}{entry.note ? ` · ${entry.note}` : ''}</dd>
-          {entry.pair && <><dt className="text-slate-500">Live Photo</dt><dd>Tiene foto/vídeo emparejado</dd></>}
-          {entry.motionPhoto && <><dt className="text-slate-500">Motion Photo</dt><dd>Incluye vídeo</dd></>}
-          <dt className="text-slate-500">SHA-256</dt><dd className="break-all font-mono">{entry.hash}</dd>
+          <dt className="text-muted">Fecha</dt><dd>{d ? d.toLocaleString('es-ES') : 'Sin fecha'}{entry.exifDate ? ' (EXIF)' : ' (archivo)'}</dd>
+          <dt className="text-muted">Tamaño</dt><dd>{formatBytes(entry.size)}</dd>
+          <dt className="text-muted">Dispositivo</dt><dd>{entry.deviceName}</dd>
+          <dt className="text-muted">Origen</dt><dd className="break-all">{entry.sourcePath || '—'}</dd>
+          <dt className="text-muted">En el disco</dt><dd className="break-all">{entry.diskPath}</dd>
+          <dt className="text-muted">Estado</dt><dd>{STATUS_LABEL[entry.status]}{entry.note ? ` · ${entry.note}` : ''}</dd>
+          {entry.pair && <><dt className="text-muted">Live Photo</dt><dd>Tiene foto/vídeo emparejado</dd></>}
+          {entry.motionPhoto && <><dt className="text-muted">Motion Photo</dt><dd>Incluye vídeo</dd></>}
+          <dt className="text-muted">SHA-256</dt><dd className="break-all font-mono">{entry.hash}</dd>
         </dl>
         {src && (
           <Button className="mt-3" onClick={() => window.open(src.url, '_blank')}>Abrir a tamaño completo</Button>
@@ -202,7 +202,7 @@ export function ExploreScreen() {
   if (!disk) return <Alert tone="warn">Conecta un disco de backup para explorarlo.</Alert>
   if (!connected) return <Alert tone="warn">El disco "{disk.name}" no está conectado.</Alert>
   if (error) return <Alert tone="error">{error}</Alert>
-  if (!entries) return <p className="text-slate-500">Leyendo el manifest…</p>
+  if (!entries) return <p className="text-muted">Leyendo el manifest…</p>
 
   const toggle = (h: string) => {
     const s = new Set(selected)
@@ -211,7 +211,7 @@ export function ExploreScreen() {
     setSelected(s)
   }
   const sel = (entries ?? []).filter((e) => selected.has(e.hash))
-  const select = 'rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800'
+  const select = 'field py-1'
 
   return (
     <>
@@ -224,7 +224,8 @@ export function ExploreScreen() {
       )}
       {tools.error && <Alert tone="error" onClose={() => useTools.setState({ error: null })}>{tools.error}</Alert>}
 
-      <Card title={`${disk.name}: ${entries.length} archivos`}>
+      <PageHeader title="Explorar el backup" subtitle={`${disk.name} · ${entries.length} archivos`} />
+      <Card>
         <div className="flex flex-wrap gap-2">
           <select className={select} value={year} onChange={(e) => setYear(e.target.value)} aria-label="Año">
             <option value="">Todos los años</option>
@@ -252,7 +253,7 @@ export function ExploreScreen() {
           <input className={`${select} min-w-0 flex-1`} placeholder="Buscar por nombre" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-slate-500">{filtered.length} resultados · {formatBytes(filtered.reduce((a, e) => a + e.size, 0))}</span>
+          <span className="text-muted">{filtered.length} resultados · {formatBytes(filtered.reduce((a, e) => a + e.size, 0))}</span>
           <Button className="px-3 py-1 text-xs" disabled={!sel.length || !!tools.job} onClick={() => tools.runRestore(sel)}>
             Restaurar seleccionadas ({sel.length})
           </Button>

@@ -31,12 +31,12 @@ export function Thumb({ file, size = 56 }: { file: SourceFile | undefined; size?
     }
   }, [file, showable])
 
-  const box = 'shrink-0 overflow-hidden rounded-lg bg-slate-200 dark:bg-slate-800'
+  const box = 'shrink-0 overflow-hidden rounded-lg bg-surface-2'
   const style = { width: size, height: size }
   if (!url || failed) {
     return (
-      <div className={`${box} flex items-center justify-center text-[10px] font-semibold uppercase text-slate-500`} style={style}>
-        {failed ? '⚠' : video ? '🎬' : ext || '?'}
+      <div className={`${box} flex items-center justify-center text-[10px] font-semibold uppercase text-muted`} style={style}>
+        {failed ? '!' : video ? 'vídeo' : ext || '?'}
       </div>
     )
   }

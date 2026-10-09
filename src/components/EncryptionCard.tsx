@@ -38,7 +38,7 @@ function EnableForm({ disk, onDone }: { disk: DiskRecord; onDone: () => void }) 
 
   return (
     <form
-      className="mt-3 space-y-3 rounded-xl border border-amber-300 p-3 dark:border-amber-800"
+      className="mt-3 space-y-3 rounded-xl border border-warn/40 p-4"
       onSubmit={(e) => {
         e.preventDefault()
         void submit()
@@ -56,12 +56,12 @@ function EnableForm({ disk, onDone }: { disk: DiskRecord; onDone: () => void }) 
       </Alert>
       <input type="password" autoComplete="new-password" className="field w-full" placeholder={`Contraseña (mínimo ${MIN_LENGTH} caracteres)`} value={pw} onChange={(e) => setPw(e.target.value)} />
       <input type="password" autoComplete="new-password" className="field w-full" placeholder="Repite la contraseña" value={pw2} onChange={(e) => setPw2(e.target.value)} />
-      {pw2 && pw !== pw2 && <p className="text-xs text-rose-600">Las contraseñas no coinciden.</p>}
+      {pw2 && pw !== pw2 && <p className="text-xs text-danger">Las contraseñas no coinciden.</p>}
       <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" className="mt-1 accent-amber-600" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+        <input type="checkbox" className="mt-1 accent-[var(--warn)]" checked={ack} onChange={(e) => setAck(e.target.checked)} />
         Entiendo que si olvido la contraseña perderé las fotos de este disco.
       </label>
-      {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
+      {error && <p className="text-sm text-danger" role="alert">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" variant="primary" disabled={!valid || busy}>{busy ? 'Preparando… (unos segundos)' : 'Cifrar este disco'}</Button>
         <Button type="button" variant="ghost" onClick={onDone}>Cancelar</Button>

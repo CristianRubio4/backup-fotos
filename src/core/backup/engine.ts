@@ -6,6 +6,7 @@ import type { EntryStatus, ManifestEntry } from '../manifest/schema'
 import { ManifestStore, type ManifestRecovery } from '../manifest/store'
 import { extOf, isVideo } from '../media'
 import { datedName, folderFor, pickDate, sanitizeName, toLocalIso, withSuffix } from '../naming'
+import { mapPool } from '../pool'
 import { incorporateDiskFiles } from './incorporate'
 import type { Device, Settings } from '../settings'
 import {
@@ -101,6 +102,8 @@ export interface EngineInput {
   hashCache?: HashCache
   /** Disco cifrado: nombres aleatorios en el disco, sin fecha ni nombre original. */
   encrypted?: boolean
+  /** Archivos que se hashean/analizan a la vez (uno por Worker). La copia siempre es de uno en uno. */
+  concurrency?: number
   now?: () => Date
 }
 
@@ -140,6 +143,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
   const filters = settings.filters
   const force = input.force ?? new Set<string>()
   const fat32Limit = input.fat32Limit ?? FAT32_MAX_FILE
+  const concurrency = Math.max(1, input.concurrency ?? 1)
   const now = input.now ?? (() => new Date())
 
   const report: BackupReport = {
@@ -300,7 +304,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
 
     setPhase('hash', preHash.length)
     const hashes = new Map<SourceFile, string>()
-    for (const f of preHash) {
+    // En paralelo (varios Workers): calcular hashes es CPU + lectura del origen, no escritura en el disco.
+    const hashErrors = await mapPool(preHash, concurrency, async (f) => {
       await control.checkpoint()
       progress.currentFile = f.relPath
       try {
@@ -313,14 +318,21 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
           hashes.set(f, h)
           await input.hashCache?.set(f, h)
         }
+        return null
       } catch (err) {
         if (err instanceof CancelledError) throw err
-        report.errors.push(item(f, { reason: `No se pudo leer: ${errorMessage(err)}` }))
-        counters.errors++
         progress.totalBytes -= f.size * (1 + copyFactor)
+        return item(f, { reason: `No se pudo leer: ${errorMessage(err)}` })
+      } finally {
+        progress.phaseDone++
+        emit()
       }
-      progress.phaseDone++
-      emit()
+    })
+    for (const e of hashErrors) {
+      if (e) {
+        report.errors.push(e)
+        counters.errors++
+      }
     }
 
     // ---- Duplicados ----
@@ -344,7 +356,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     setPhase('analyze', plan.toCopy.length)
     const analysis = new Map<SourceFile, Analysis>()
     const toCopy: HashedFile[] = []
-    for (const hf of plan.toCopy) {
+    type Analyzed = { ok: Analysis } | { error: string }
+    const analyzed = await mapPool(plan.toCopy, concurrency, async (hf): Promise<Analyzed> => {
       await control.checkpoint()
       const f = hf.file
       progress.currentFile = f.relPath
@@ -377,22 +390,27 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
         }
       } catch (err) {
         if (err instanceof CancelledError) throw err
-        report.errors.push(item(f, { reason: `No se pudo leer: ${errorMessage(err)}` }))
-        counters.errors++
+        return { error: `No se pudo leer: ${errorMessage(err)}` }
+      } finally {
         progress.phaseDone++
-        continue
+        emit()
       }
       if (forced) verdict = { action: 'copy', status: 'unverified', note: 'Copiado a petición del usuario aunque el análisis lo había descartado' }
-
-      if (verdict.action === 'discard') {
-        discardItem(f, verdict.category, verdict.reason)
+      return { ok: { exif, verdict, motionPhoto: !!features?.bytes.motionPhoto, forced } }
+    })
+    // Resultados en el orden original (el informe y la copia son deterministas).
+    plan.toCopy.forEach((hf, i) => {
+      const r = analyzed[i]
+      if ('error' in r) {
+        report.errors.push(item(hf.file, { reason: r.error }))
+        counters.errors++
+      } else if (r.ok.verdict.action === 'discard') {
+        discardItem(hf.file, r.ok.verdict.category, r.ok.verdict.reason)
       } else {
-        analysis.set(f, { exif, verdict, motionPhoto: !!features?.bytes.motionPhoto, forced })
+        analysis.set(hf.file, r.ok)
         toCopy.push(hf)
       }
-      progress.phaseDone++
-      emit()
-    }
+    })
     // Las fotos antes que sus vídeos de Live Photo, para que el vídeo tome el nombre de la foto.
     toCopy.sort((a, b) => Number(photoOfVideo.has(a.file)) - Number(photoOfVideo.has(b.file)))
     progress.totalBytes = baseBytes + sum(preHash) + sum(toCopy.map((h) => h.file)) * copyFactor

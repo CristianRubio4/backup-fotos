@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { EncryptionCard } from '../components/EncryptionCard'
-import { Button, Card, Toggle } from '../components/ui'
+import { Bell, Copy, Filter, FolderTree, Smartphone } from 'lucide-react'
+import { Button, Card, PageHeader, Toggle } from '../components/ui'
 import { DEFAULT_FILTERS, type FilterSettings } from '../core/settings'
 import { useApp } from '../state/app'
 
@@ -10,11 +11,12 @@ export function SettingsScreen() {
 
   return (
     <>
-      <Card title="Este dispositivo">
+      <PageHeader title="Ajustes" subtitle="Se guardan en este navegador" />
+      <Card title="Este dispositivo" icon={Smartphone}>
         <label className="block text-sm">
           <span className="mb-1 block font-medium">Nombre</span>
           <input
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+            className="field w-full"
             value={name}
             maxLength={60}
             onChange={(e) => setName(e.target.value)}
@@ -22,10 +24,10 @@ export function SettingsScreen() {
             placeholder="Móvil de Ana, Portátil…"
           />
         </label>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Se guarda en el registro del disco junto a cada foto copiada.</p>
+        <p className="mt-1 text-xs text-muted">Se guarda en el registro del disco junto a cada foto copiada.</p>
       </Card>
 
-      <Card title="Copia">
+      <Card title="Copia" icon={Copy}>
         <Toggle
           label="Verificar cada archivo releyéndolo del disco"
           hint="Compara el hash SHA-256 de la copia con el original. Tarda más, pero garantiza que la copia es exacta. Recomendado."
@@ -41,14 +43,14 @@ export function SettingsScreen() {
         <label className="flex items-center justify-between gap-4 py-2 text-sm">
           <span>
             <span className="block font-medium">Guardar el progreso cada</span>
-            <span className="block text-xs text-slate-500 dark:text-slate-400">Si se corta, se reanuda sin repetir lo ya registrado.</span>
+            <span className="block text-xs text-muted">Si se corta, se reanuda sin repetir lo ya registrado.</span>
           </span>
           <span className="flex items-center gap-2">
             <input
               type="number"
               min={1}
               max={500}
-              className="w-20 rounded-lg border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-800"
+              className="w-20 field py-1"
               value={settings.saveEvery}
               onChange={(e) => {
                 const n = Math.max(1, Math.min(500, Number(e.target.value) || 1))
@@ -60,22 +62,22 @@ export function SettingsScreen() {
         </label>
       </Card>
 
-      <Card title="Estructura en el disco">
+      <Card title="Estructura en el disco" icon={FolderTree}>
         <label className="flex items-center gap-2 py-1 text-sm">
-          <input type="radio" name="layout" className="accent-emerald-600" checked={settings.layout === 'together'} onChange={() => saveSettings({ ...settings, layout: 'together' })} />
+          <input type="radio" name="layout" className="accent-[var(--accent)]" checked={settings.layout === 'together'} onChange={() => saveSettings({ ...settings, layout: 'together' })} />
           Todo junto: <code className="text-xs">2026/10/…</code>
         </label>
         <label className="flex items-center gap-2 py-1 text-sm">
-          <input type="radio" name="layout" className="accent-emerald-600" checked={settings.layout === 'per-device'} onChange={() => saveSettings({ ...settings, layout: 'per-device' })} />
+          <input type="radio" name="layout" className="accent-[var(--accent)]" checked={settings.layout === 'per-device'} onChange={() => saveSettings({ ...settings, layout: 'per-device' })} />
           Una carpeta por dispositivo: <code className="text-xs">{device.name || 'Móvil de Ana'}/2026/10/…</code>
         </label>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-xs text-muted">
           En ambos casos los duplicados se detectan entre todos los dispositivos: una foto que ya copió otro dispositivo no se vuelve a copiar.
           El cambio afecta a las copias nuevas.
         </p>
       </Card>
 
-      <Card title="Recordatorios">
+      <Card title="Recordatorios" icon={Bell}>
         <NumberField label="Avisar si un disco lleva sin backup más de" value={settings.staleDays} min={1} max={365} unit="días" onChange={(n) => saveSettings({ ...settings, staleDays: n })} />
         <NumberField label="Recordar comprobar la integridad cada" value={settings.integrityMonths} min={1} max={36} unit="meses" onChange={(n) => saveSettings({ ...settings, integrityMonths: n })} />
       </Card>
@@ -89,7 +91,7 @@ export function SettingsScreen() {
 
 function NumberField({ label, value, min, max, step = 1, unit, onChange }: { label: string; value: number; min: number; max: number; step?: number; unit: string; onChange: (n: number) => void }) {
   return (
-    <label className="flex items-center justify-between gap-4 pb-2 pl-6 text-xs text-slate-600 dark:text-slate-300 first:pl-0">
+    <label className="flex items-center justify-between gap-4 pb-2 pl-6 text-xs text-muted first:pl-0">
       <span>{label}</span>
       <span className="flex items-center gap-2">
         <input
@@ -97,7 +99,7 @@ function NumberField({ label, value, min, max, step = 1, unit, onChange }: { lab
           min={min}
           max={max}
           step={step}
-          className="w-20 rounded-lg border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-800"
+          className="w-20 field py-1"
           value={value}
           onChange={(e) => {
             const n = Number(e.target.value)
@@ -117,8 +119,8 @@ function FiltersCard() {
   const reset = () => void saveSettings({ ...settings, filters: DEFAULT_FILTERS })
 
   return (
-    <Card title="Descartar archivos que no sirven" actions={<Button variant="ghost" onClick={reset}>Valores por defecto</Button>}>
-      <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+    <Card title="Descartar archivos que no sirven" icon={Filter} actions={<Button variant="ghost" onClick={reset}>Valores por defecto</Button>}>
+      <p className="mb-2 text-xs text-muted">
         Lo descartado no se copia, pero <b>nunca se borra del origen</b> y aparece en el informe con la opción "Copiar igualmente". Lo que no se
         puede comprobar (formatos que el navegador no abre) se copia siempre, marcado como "no verificado".
       </p>

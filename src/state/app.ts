@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom'
 import { create } from 'zustand'
 import { runBackup, type BackupReport } from '../core/backup/engine'
 import type { Progress } from '../core/backup/progress'
@@ -11,7 +12,7 @@ import { db, type DiskRecord, type HistoryRecord, type SourceRecord } from '../d
 import { createAnalyzer } from '../platform/analyzer'
 import { capabilities, ensurePermission } from '../platform/capabilities'
 import { checkDisk, DISK_POLL_MS, type DiskStatus } from '../platform/disk-monitor'
-import { io, workerExif, workerHasher } from '../platform/io'
+import { io, POOL_SIZE, workerExif, workerHasher } from '../platform/io'
 import { BATTERY_PAUSE, BATTERY_WARN, keepScreenOn, readBattery, watchBattery, type BatteryInfo, type WakeState } from '../platform/power'
 import { isInside, walkSource } from '../platform/walk'
 import { diskTarget, isLocked } from './keys'
@@ -124,7 +125,23 @@ export const useApp = create<AppState>((set, get) => ({
     void readBattery().then((battery) => set({ battery }))
   },
 
-  go: (screen) => set({ screen }),
+  go: (screen) => {
+    if (get().screen === screen) return
+    const apply = () => {
+      flushSync(() => set({ screen }))
+      window.scrollTo({ top: 0 })
+    }
+    // Transición suave entre pantallas (View Transitions API) si el navegador la tiene y no se pide reducir el movimiento.
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+    if ('startViewTransition' in document && !reduced && document.visibilityState === 'visible') {
+      const t = document.startViewTransition(apply)
+      // Si el navegador aborta la animación (pestaña oculta, otra navegación…), la pantalla ya ha cambiado igualmente.
+      const ignore = () => {}
+      t.ready.catch(ignore)
+      t.finished.catch(ignore)
+      t.updateCallbackDone.catch(ignore)
+    } else apply()
+  },
   dismissNotice: () => set({ notice: null }),
   setNotice: (text) => set({ notice: text }),
 
@@ -436,6 +453,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
       readExif: workerExif,
       analyzer: createAnalyzer(settings.filters),
       hashCache: db.hashCache(),
+      concurrency: POOL_SIZE,
       force: force && new Set(force.map((f) => f.relPath)),
       waitForDisk: (diskId) => waitForDisk(disk, diskId, ctl),
       device,

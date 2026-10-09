@@ -83,6 +83,29 @@ describe('backup del conjunto de prueba', () => {
     expect(by('IMG_0001.jpg').status).toBe('verified')
   })
 
+  it('en paralelo (4 tareas) el resultado es idéntico al secuencial', async () => {
+    const seq = new MemoryTarget()
+    const par = new MemoryTarget()
+    const r1 = await run(seq, loadSet())
+    const r2 = await runBackup({
+      target: par,
+      diskName: 'USB',
+      scan: async () => ({ files: loadSet().filter((f) => f.name !== 'notas.txt'), ignored: ['notas.txt'] }),
+      hasher: testHasher,
+      readExif: nodeExif,
+      analyzer: byteAnalyzer(simulatedBrowser),
+      device: { id: 'dev', name: 'Portátil' },
+      settings: DEFAULT_SETTINGS,
+      control: new Controller(),
+      onProgress: () => {},
+      now: () => new Date(2026, 9, 9, 12, 0, 0),
+      concurrency: 4,
+    })
+    const pick = (r: typeof r1) => ({ c: r.copied.map((x) => x.diskPath), d: r.discarded.map((x) => x.sourcePath), u: r.duplicates.map((x) => x.sourcePath) })
+    expect(pick(r2)).toEqual(pick(r1))
+    expect(par.mediaPaths()).toEqual(seq.mediaPaths())
+  })
+
   it('"Copiar igualmente": copia un descartado marcado como no verificado', async () => {
     const t = new MemoryTarget()
     const files = loadSet()

@@ -1,11 +1,13 @@
+import { HardDrive } from 'lucide-react'
 import type { DiskStatus } from '../platform/disk-monitor'
 import { useApp } from '../state/app'
+import { StatusDot } from './ui'
 
 export function statusLabel(s: DiskStatus | undefined, name: string): [dot: string, text: string] {
-  if (s?.state === 'connected') return ['bg-emerald-500', `Disco conectado: ${s.name}`]
-  if (s?.state === 'needs-permission') return ['bg-amber-500', `${name}: hay que permitir el acceso`]
-  if (!s) return ['bg-slate-300', `${name}: comprobando…`]
-  return ['bg-slate-400', `${name}: no conectado`]
+  if (s?.state === 'connected') return ['ok', `Disco conectado: ${s.name}`]
+  if (s?.state === 'needs-permission') return ['warn', `${name}: hay que permitir el acceso`]
+  if (!s) return ['pending', `${name}: comprobando…`]
+  return ['off', `${name}: no conectado`]
 }
 
 /** "Disco conectado: X" / "Ningún disco conectado", actualizado cada 3 s. */
@@ -13,13 +15,18 @@ export function DiskBadge() {
   const { disks, diskStates } = useApp()
   if (disks.length === 0) return null
   const connected = disks.filter((d) => diskStates[d.key]?.state === 'connected')
-  const [dot, text] = connected.length
-    ? ['bg-emerald-500', `Disco conectado: ${connected.map((d) => (diskStates[d.key] as { name: string }).name).join(', ')}`]
-    : ['bg-slate-400', 'Ningún disco conectado']
   return (
-    <span className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300" role="status">
-      <span className={`h-2.5 w-2.5 rounded-full ${dot}`} aria-hidden />
-      {text}
-    </span>
+    <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3" role="status" aria-live="polite">
+      <span className={`grid h-9 w-9 place-items-center rounded-xl ${connected.length ? 'bg-accent-soft text-accent-strong' : 'bg-surface-2 text-subtle'}`}>
+        <HardDrive size={17} aria-hidden />
+      </span>
+      <div className="min-w-0 text-xs">
+        <div className="flex items-center gap-1.5 font-medium">
+          <StatusDot tone={connected.length ? 'ok' : 'off'} />
+          {connected.length ? 'Disco conectado' : 'Ningún disco conectado'}
+        </div>
+        {connected.length > 0 && <div className="truncate text-muted">{connected.map((d) => (diskStates[d.key] as { name: string }).name).join(', ')}</div>}
+      </div>
+    </div>
   )
 }
