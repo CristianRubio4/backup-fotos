@@ -2,3 +2,6 @@ node_modules
 dist
 *.local
 .DS_Store
+dist-guide
+docs/guia/img/*.png
+guia-de-uso.pdf

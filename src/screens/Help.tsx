@@ -12,7 +12,19 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function HelpScreen() {
   return (
     <>
-      <PageHeader title="Ayuda" subtitle="Cómo funciona, límites del navegador y buenas prácticas" />
+      <PageHeader
+        title="Ayuda"
+        subtitle="Cómo funciona, límites del navegador y buenas prácticas"
+        actions={
+          <a
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium hover:bg-surface-2"
+            href={`${import.meta.env.BASE_URL}guia-de-uso.pdf`}
+            download
+          >
+            Descargar la guía (PDF)
+          </a>
+        }
+      />
       <Section title="Cómo funciona">
         <p>
           La app recorre la carpeta de fotos, calcula una huella (hash SHA-256) de cada archivo y copia al disco solo lo que aún no está.

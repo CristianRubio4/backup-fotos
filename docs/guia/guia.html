@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Backup de fotos · Guía de uso</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  @page :first { margin: 0; }
+  :root {
+    --accent: #0f9b7a; --accent-dark: #0b7a60; --accent-soft: #e6f6f1;
+    --fg: #1d2433; --muted: #5b6475; --line: #e3e7ee; --warn: #b7791f; --warn-soft: #fff6e5; --danger: #c53030;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: "Inter", "Noto Sans", "Segoe UI", "DejaVu Sans", Arial, sans-serif; color: var(--fg); font-size: 10.5pt; line-height: 1.55; }
+  h1, h2, h3 { line-height: 1.2; letter-spacing: -0.01em; }
+  h2 { font-size: 17pt; margin: 0 0 8pt; padding-top: 2pt; color: var(--fg); break-after: avoid; }
+  h2 .n { display: inline-block; min-width: 22pt; color: var(--accent); }
+  h3 { font-size: 12pt; margin: 14pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 7pt; }
+  ul, ol { margin: 0 0 8pt; padding-left: 16pt; }
+  li { margin-bottom: 3pt; }
+  b, strong { font-weight: 650; }
+  code { font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 9pt; background: #f2f4f7; padding: 0 3pt; border-radius: 3pt; }
+  section { break-before: page; }
+  section.cont { break-before: auto; margin-top: 18pt; }
+
+  /* Portada */
+  .cover { height: 297mm; padding: 34mm 22mm 22mm; display: flex; flex-direction: column; background: linear-gradient(160deg, #0f9b7a 0%, #0b6f58 70%, #0a5c49 100%); color: #fff; break-after: page; }
+  .cover .logo { width: 64pt; height: 64pt; border-radius: 16pt; background: rgba(255,255,255,0.15); display: grid; place-items: center; }
+  .cover .logo img { width: 52pt; height: 52pt; }
+  .cover h1 { font-size: 38pt; margin: 26pt 0 6pt; }
+  .cover .sub { font-size: 15pt; opacity: 0.92; max-width: 140mm; }
+  .cover .pills { margin-top: 22pt; display: flex; flex-wrap: wrap; gap: 6pt; }
+  .cover .pill { border: 1px solid rgba(255,255,255,0.45); border-radius: 999px; padding: 3pt 10pt; font-size: 10pt; }
+  .cover .shot { margin-top: auto; border-radius: 10pt; overflow: hidden; box-shadow: 0 18pt 40pt rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.25); }
+  .cover .shot img { display: block; width: 100%; }
+  .cover .url { margin-top: 14pt; font-size: 11pt; opacity: 0.95; }
+
+  /* Índice */
+  .toc ol { list-style: none; padding: 0; columns: 2; column-gap: 20pt; }
+  .toc li { padding: 5pt 0; border-bottom: 1px solid var(--line); break-inside: avoid; }
+  .toc li span { color: var(--accent); font-weight: 650; margin-right: 6pt; }
+
+  /* Elementos */
+  .lead { font-size: 11.5pt; color: var(--muted); margin-bottom: 12pt; }
+  figure { margin: 10pt 0 12pt; break-inside: avoid; }
+  figure img { display: block; width: 100%; border-radius: 8pt; border: 1px solid var(--line); box-shadow: 0 4pt 14pt rgba(16, 24, 40, 0.08); }
+  figure.half { width: 62%; margin-left: auto; margin-right: auto; }
+  figure.phone { width: 42%; margin-left: auto; margin-right: auto; }
+  figcaption { font-size: 9pt; color: var(--muted); text-align: center; margin-top: 5pt; }
+  .row { display: flex; gap: 14pt; align-items: flex-start; }
+  .row > * { flex: 1; }
+  .box { border-radius: 9pt; padding: 9pt 11pt; margin: 10pt 0; break-inside: avoid; border: 1px solid var(--line); background: #f8fafc; }
+  .box.tip { background: var(--accent-soft); border-color: #bfe8dc; }
+  .box.warn { background: var(--warn-soft); border-color: #f3d9a4; }
+  .box.danger { background: #fdecec; border-color: #f5c2c2; }
+  .box .t { font-weight: 700; display: block; margin-bottom: 3pt; }
+  .steps { counter-reset: s; list-style: none; padding: 0; }
+  .steps > li { counter-increment: s; position: relative; padding-left: 26pt; margin-bottom: 8pt; break-inside: avoid; }
+  .steps > li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 18pt; height: 18pt; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 9.5pt; display: grid; place-items: center; }
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0 12pt; font-size: 9.5pt; break-inside: avoid; }
+  th, td { text-align: left; vertical-align: top; padding: 5pt 7pt; border-bottom: 1px solid var(--line); }
+  th { background: #f2f4f7; font-weight: 650; }
+  .k { display: inline-block; border: 1px solid #cfd5df; border-bottom-width: 2px; border-radius: 4pt; padding: 0 4pt; font-size: 9pt; background: #fff; }
+  .badge { display: inline-block; border-radius: 999px; padding: 0 6pt; font-size: 8.5pt; font-weight: 650; background: var(--accent-soft); color: var(--accent-dark); }
+  .muted { color: var(--muted); }
+  .footer-note { margin-top: 20pt; font-size: 9pt; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8pt; }
+</style>
+</head>
+<body>
+
+<!-- PORTADA -->
+<div class="cover">
+  <div class="logo"><img src="img/logo.svg" alt="" /></div>
+  <h1>Backup de fotos</h1>
+  <div class="sub">Guía de uso: cómo hacer copias de seguridad de tus fotos y vídeos en un disco, sin instalar nada y sin que salgan de tu dispositivo.</div>
+  <div class="pills">
+    <span class="pill">100 % en el navegador</span><span class="pill">Sin cuentas ni servidores</span><span class="pill">No duplica fotos</span><span class="pill">Verifica cada copia</span>
+  </div>
+  <div class="shot"><img src="img/inicio.png" alt="Pantalla de inicio" /></div>
+  <div class="url">cristianrubio4.github.io/backup-fotos</div>
+</div>
+
+<!-- ÍNDICE -->
+<section class="toc" style="break-before:auto">
+  <h2>Contenido</h2>
+  <ol>
+    <li><span>1</span>Qué es y qué necesitas</li>
+    <li><span>2</span>Tu primer backup, paso a paso</li>
+    <li><span>3</span>Mientras se hace el backup</li>
+    <li><span>4</span>El informe final</li>
+    <li><span>5</span>Fotos del móvil</li>
+    <li><span>6</span>Los siguientes backups y varios discos</li>
+    <li><span>7</span>Explorar y recuperar fotos</li>
+    <li><span>8</span>Herramientas: comprobar y liberar espacio</li>
+    <li><span>9</span>Cifrado (opcional)</li>
+    <li><span>10</span>iPhone, iPad, Safari y Firefox</li>
+    <li><span>11</span>Ajustes</li>
+    <li><span>12</span>Problemas frecuentes</li>
+    <li><span>13</span>Buenas prácticas</li>
+  </ol>
+
+  <div class="box tip"><span class="t">En una frase</span>Abres la web, eliges dónde guardar (un disco o una carpeta) y qué fotos copiar, y pulsas <b>Hacer backup</b>. La app copia solo lo nuevo, comprueba que cada copia es exacta y te enseña un informe. Las siguientes veces, el mismo botón.</div>
+</section>
+
+<!-- 1 -->
+<section>
+  <h2><span class="n">1</span>Qué es y qué necesitas</h2>
+  <p class="lead">Backup de fotos es una aplicación web: se usa desde el navegador, sin instalar nada. Todo ocurre en tu dispositivo: no hay servidores ni cuentas, y ninguna foto se sube a internet.</p>
+
+  <h3>Qué hace</h3>
+  <ul>
+    <li><b>Copia</b> tus fotos y vídeos a un disco externo, un pendrive o una carpeta de tu equipo, ordenados en carpetas por <b>año y mes</b>.</li>
+    <li><b>No repite</b>: reconoce las fotos que ya están guardadas aunque tengan otro nombre o vengan de otro dispositivo.</li>
+    <li><b>Verifica</b> cada copia leyéndola de nuevo y comparando su huella digital con la del original.</li>
+    <li><b>Descarta lo que no sirve</b> (fotos dañadas, totalmente negras o diminutas) sin borrarlo nunca de tu dispositivo, y te deja copiarlo igualmente.</li>
+    <li>Nunca borra ni modifica nada de tus fotos originales (salvo que tú lo pidas en "Liberar espacio").</li>
+  </ul>
+
+  <h3>Qué necesitas</h3>
+  <table>
+    <tr><th style="width:32%">Navegador</th><th>Cómo funciona</th></tr>
+    <tr><td><b>Chrome o Edge</b> en Windows, Mac, Linux o Chromebook, y <b>Chrome en Android</b></td><td><b>Modo completo</b>: la app escribe directamente en el disco o la carpeta. Es el modo recomendado.</td></tr>
+    <tr><td><b>Safari</b> (iPhone, iPad, Mac) y <b>Firefox</b></td><td><b>Modo compatible</b>: estos navegadores no dejan escribir en el disco, así que la app prepara archivos ZIP que tú guardas (ver capítulo 10).</td></tr>
+  </table>
+  <p>Además: un <b>disco externo o pendrive</b> (o espacio libre en una carpeta de tu equipo). Para discos nuevos se recomienda el formato <b>exFAT</b>: el antiguo FAT32 no admite vídeos de más de 4 GB.</p>
+
+  <div class="box tip"><span class="t">Instálala como app (opcional)</span>En Chrome o Edge, pulsa el icono de instalar en la barra de direcciones. En Android: menú ⋮ → <i>Instalar app</i>. En iPhone: Compartir → <i>Añadir a pantalla de inicio</i>. Así se abre como una app más y funciona sin conexión.</div>
+</section>
+
+<!-- 2 -->
+<section>
+  <h2><span class="n">2</span>Tu primer backup, paso a paso</h2>
+  <figure><img src="img/inicio.png" alt="" /><figcaption>Pantalla de inicio: arriba el botón de backup; debajo, dónde guardar y qué fotos copiar.</figcaption></figure>
+
+  <ol class="steps">
+    <li><b>Abre la app</b> en Chrome o Edge: <code>cristianrubio4.github.io/backup-fotos</code></li>
+    <li><b>Elige dónde guardar.</b> En la tarjeta <i>Dónde guardar</i>, pulsa <b>Añadir</b> y elige (o crea) una carpeta, por ejemplo <i>Backup fotos</i>, en tu disco externo, en un pendrive o en una carpeta de tu equipo. El navegador te pedirá permiso para modificar esa carpeta: acéptalo.</li>
+    <li><b>Elige qué fotos copiar.</b> En <i>Fotos que copiar</i>, pulsa <b>Añadir</b> y elige una carpeta. Puede ser una carpeta concreta (Imágenes, DCIM…) o un disco o móvil entero: la app busca las fotos y vídeos en todas las subcarpetas. Puedes añadir varias (cámara, capturas, WhatsApp…).</li>
+    <li><b>Pulsa Hacer backup.</b> La primera vez tarda más; las siguientes solo se copia lo nuevo.</li>
+  </ol>
+
+  <div class="box"><span class="t">¿Y si el disco ya tenía fotos copiadas a mano?</span>No pasa nada: la primera vez que usas un disco, la app revisa lo que ya hay, lo registra sin tocarlo y no lo vuelve a copiar.</div>
+  <div class="box"><span class="t">Permisos</span>Cada vez que abras la app, el navegador puede pedirte de nuevo permiso para usar las carpetas. En Chrome puedes marcar <i>Permitir en cada visita</i> para no tener que confirmarlo siempre.</div>
+</section>
+
+<!-- 3 -->
+<section>
+  <h2><span class="n">3</span>Mientras se hace el backup</h2>
+  <figure><img src="img/progreso.png" alt="" /><figcaption>Progreso: porcentaje, fase actual, velocidad, tiempo restante y contadores.</figcaption></figure>
+  <ul>
+    <li>Verás las fases: revisar el disco, buscar las fotos, calcular sus huellas, comprobar duplicados, analizar, copiar y verificar.</li>
+    <li><b>Pausar / Reanudar / Cancelar</b>: si cancelas, lo ya copiado queda guardado y no se repetirá.</li>
+    <li><b>Mantén la pestaña abierta</b> y el disco conectado. La app intenta mantener la pantalla encendida.</li>
+    <li>El porcentaje también aparece en el título de la pestaña y en un indicador arriba, para seguirlo desde otras pantallas.</li>
+  </ul>
+  <div class="box tip"><span class="t">Si se desconecta el disco</span>El backup se pone en pausa y <b>continúa solo</b> cuando vuelves a conectar el <b>mismo</b> disco, sin repetir nada. Si conectas otro, te avisa.</div>
+  <div class="box warn"><span class="t">Batería</span>En portátiles y móviles: por debajo del 20 % te avisa antes de empezar, y por debajo del 10 % pausa el backup. Con el disco conectado al móvil por USB (OTG), el móvil normalmente no se carga a la vez.</div>
+</section>
+
+<!-- 4 -->
+<section>
+  <h2><span class="n">4</span>El informe final</h2>
+  <figure><img src="img/informe.png" alt="" /><figcaption>Resumen del backup.</figcaption></figure>
+  <table>
+    <tr><th style="width:28%">Apartado</th><th>Qué significa</th></tr>
+    <tr><td><b>Copiados</b></td><td>Fotos y vídeos nuevos guardados y verificados.</td></tr>
+    <tr><td><b>Duplicados omitidos</b></td><td>Ya estaban en el disco (o repetidos en tu selección): no se copian otra vez.</td></tr>
+    <tr><td><b>Descartados</b></td><td>No se han copiado porque parecen no servir. <b>Siguen intactos</b> en tu dispositivo.</td></tr>
+    <tr><td><b>No verificados</b></td><td>Copiados, pero la app no ha podido comprobar su contenido (formatos que el navegador no abre). Están a salvo igualmente.</td></tr>
+    <tr><td><b>Posible versión reducida</b></td><td>Foto con mucha menos resolución de la esperada: puede que el original esté solo en iCloud o Google Fotos (ver capítulo 12).</td></tr>
+    <tr><td><b>Errores</b></td><td>Archivos que no se han podido leer o copiar, con el motivo. El resto del backup sigue.</td></tr>
+  </table>
+  <figure><img src="img/informe-descartados.png" alt="" /><figcaption>Los descartados aparecen con miniatura y motivo, y se pueden copiar igualmente.</figcaption></figure>
+  <p>Se descartan por defecto las fotos <b>dañadas</b> (cortadas o ilegibles), las <b>vacías</b> (negras, blancas o de un color) y las <b>diminutas</b> (iconos, stickers). Si alguna te interesa, pulsa <b>Copiar igualmente</b> (o <b>Copiar todos igualmente</b>).</p>
+</section>
+
+<!-- 5 -->
+<section>
+  <h2><span class="n">5</span>Fotos del móvil</h2>
+  <p class="lead">Hay tres formas de hacer backup de las fotos de un móvil.</p>
+
+  <h3>A. Desde el propio móvil Android (recomendado)</h3>
+  <ol class="steps">
+    <li>Abre la app en <b>Chrome</b> en el móvil.</li>
+    <li>En <i>Fotos que copiar</i>, añade <b>DCIM</b> (cámara). Si quieres, añade también <i>Pictures → Screenshots</i> (capturas) y <i>Android → media → com.whatsapp → WhatsApp → Media</i> (WhatsApp). Pulsa en la app <i>"¿Qué carpetas añadir en Android?"</i> para ver la lista.</li>
+    <li>En <i>Dónde guardar</i>, elige una carpeta de un disco o pendrive conectado por USB (OTG) o de la tarjeta SD.</li>
+  </ol>
+  <div class="box"><span class="t">Restricciones de Android</span>Android no deja elegir la raíz del almacenamiento ni la carpeta <i>Download</i> entera: elige sus subcarpetas.</div>
+
+  <h3>B. Móvil conectado por cable a un ordenador con Windows</h3>
+  <p>Windows muestra el móvil como "dispositivo portátil", no como un disco normal, y el navegador no siempre puede recorrerlo como carpeta. Primero desbloquea el móvil y elige <i>Transferencia de archivos</i> al conectarlo. Después:</p>
+  <ul>
+    <li>Prueba <b>Añadir</b> y elige el móvil o su almacenamiento interno: la app busca las fotos en todas las subcarpetas.</li>
+    <li>Si da error, usa <b>Elegir fotos sueltas</b>: en la ventana ve a <i>Este equipo → tu móvil → Almacenamiento interno → DCIM → Camera</i>, pulsa <span class="k">Ctrl</span> + <span class="k">A</span> y <b>Abrir</b>. Repite con otras carpetas si quieres. Estas fotos se usan solo en esa sesión.</li>
+  </ul>
+  <figure class="half"><img src="img/movil-usb.png" alt="" /><figcaption>La app explica estas opciones en "¿Fotos de un móvil conectado por USB?".</figcaption></figure>
+
+  <h3>C. iPhone</h3>
+  <p>Ver capítulo 10 (modo compatible), o pasa las fotos al ordenador con la app Fotos de Windows y haz el backup desde esa carpeta.</p>
+  <div class="box tip"><span class="t">Live Photos y Motion Photos</span>Las Live Photos del iPhone (foto + vídeo corto) se guardan juntas, con el mismo nombre. Las Motion Photos de Android se copian con su vídeo incluido.</div>
+</section>
+
+<!-- 6 -->
+<section>
+  <h2><span class="n">6</span>Los siguientes backups y varios discos</h2>
+  <p>Cada vez que quieras actualizar el backup, conecta el disco, abre la app y pulsa <b>Hacer backup</b>. Solo se copian las fotos nuevas, y la app recuerda las que ya había comprobado, así que va mucho más rápido.</p>
+  <h3>Varios discos (recomendado)</h3>
+  <p>Puedes tener varios destinos (por ejemplo, uno en casa y otro fuera) y alternarlos. Pulsa <b>Añadir</b> en <i>Dónde guardar</i> para cada uno.</p>
+  <ul>
+    <li>Cada destino muestra si está <b>conectado</b> y cuándo fue su <b>último backup</b>. La app comprueba cada 3 segundos qué disco está conectado.</li>
+    <li>Si hay varios conectados, pulsa <b>Usar este</b> en el que quieras como destino.</li>
+    <li>Te avisa si un disco lleva más de 30 días sin backup (configurable en Ajustes).</li>
+    <li>En el menú <b>⋯</b> de cada disco puedes renombrarlo u "olvidarlo" (no borra nada del disco).</li>
+  </ul>
+  <h3>Varios dispositivos</h3>
+  <p>Puedes usar el mismo disco desde el móvil y desde el ordenador: las fotos repetidas se detectan entre todos. En Ajustes puedes ponerle nombre a cada dispositivo ("Móvil de Ana") y, si quieres, guardar cada uno en su propia subcarpeta.</p>
+  <div class="box"><span class="t">Dónde quedan las fotos</span>En carpetas <code>Año/Mes</code>, con nombres como <code>2026-10-09_143022_IMG_0001.jpg</code> (fecha y hora de la foto delante del nombre original). Son archivos normales: puedes abrirlos desde cualquier ordenador sin la app.</div>
+</section>
+
+<!-- 7 -->
+<section>
+  <h2><span class="n">7</span>Explorar y recuperar fotos</h2>
+  <figure><img src="img/explorar.png" alt="" /><figcaption>Explorar el backup del disco conectado.</figcaption></figure>
+  <ul>
+    <li>En <b>Explorar</b> ves todo lo guardado en el disco conectado, con miniaturas.</li>
+    <li>Filtra por <b>año, mes, dispositivo, tipo</b> (fotos o vídeos) o <b>estado</b>, o busca por nombre.</li>
+    <li>Pulsa una foto para verla en grande con sus datos (fecha, dispositivo, de dónde vino).</li>
+    <li>Para <b>recuperar</b> fotos, márcalas y pulsa <b>Restaurar seleccionadas</b>, o <b>Restaurar todo lo filtrado</b>, y elige una carpeta. Nunca se sobrescribe nada: si ya existe un archivo con el mismo nombre, se añade un número.</li>
+  </ul>
+</section>
+
+<!-- 8 -->
+<section>
+  <h2><span class="n">8</span>Herramientas: comprobar y liberar espacio</h2>
+  <figure><img src="img/herramientas.png" alt="" /><figcaption>Herramientas del disco conectado.</figcaption></figure>
+  <h3>Comprobar disco</h3>
+  <p>Relee todo lo guardado y comprueba que ninguna foto se ha dañado o perdido. Si encuentra problemas, pulsa <b>Volver a copiarlos</b>: los busca en tus carpetas de origen y en otros discos conectados. La app te recuerda hacerlo cada 6 meses.</p>
+  <h3>Liberar espacio</h3>
+  <p>Borra del móvil u ordenador las fotos que ya están a salvo en el backup.</p>
+  <ol class="steps">
+    <li>Pulsa <b>Buscar fotos que ya están a salvo</b>.</li>
+    <li>Solo se ofrecen fotos <b>verificadas</b>. Nunca las "no verificadas" ni las "posibles versiones reducidas". Se indica en cuántos discos está cada una; por defecto solo se ofrecen las que están en <b>dos discos o más</b>.</li>
+    <li>Revisa la lista (con miniaturas), desmarca lo que quieras conservar, escribe <b>BORRAR</b> y confirma.</li>
+  </ol>
+  <div class="box danger"><span class="t">Atención</span>Lo borrado puede no ir a la papelera. Justo antes de borrar cada foto, la app vuelve a comprobar que su copia es correcta; si algo no cuadra, no la borra. Lo borrado queda anotado en el Historial. En iPhone no está disponible: bórralas desde la app Fotos.</div>
+  <h3>Otras herramientas</h3>
+  <ul>
+    <li><b>Exportar a ZIP</b>: abre el modo compatible para preparar archivos ZIP (útil para pasar fotos a otra persona).</li>
+    <li><b>Incorporar archivos sueltos</b>: registra fotos que copiaste al disco a mano o desde un ZIP, para que no se vuelvan a copiar.</li>
+    <li><b>Reconstruir manifest</b>: solo si el registro del disco se ha dañado (la app te lo indicará).</li>
+  </ul>
+</section>
+
+<!-- 9 -->
+<section>
+  <h2><span class="n">9</span>Cifrado (opcional)</h2>
+  <p>Si el disco va a estar fuera de casa, puedes cifrarlo con una contraseña: sin ella nadie podrá ver las fotos, ni siquiera los nombres de los archivos.</p>
+  <ol class="steps">
+    <li>Usa un disco (o una carpeta) <b>vacío</b>: el cifrado solo se activa al principio.</li>
+    <li>Ve a <b>Ajustes → Cifrado</b> y pulsa <b>Cifrar este disco</b>.</li>
+    <li>Escribe la contraseña dos veces (mínimo 10 caracteres) y confirma que entiendes el aviso.</li>
+    <li>Cada vez que abras la app, escribe la contraseña en Inicio para <b>desbloquear</b> el disco.</li>
+  </ol>
+  <div class="box danger"><span class="t">Muy importante</span><b>Si olvidas la contraseña, las fotos de ese disco se pierden para siempre.</b> Nadie puede recuperarla. Apúntala en un lugar seguro. Las fotos cifradas solo se pueden abrir con esta app: para sacarlas, usa <b>Herramientas → Descifrar todo el disco a una carpeta</b> o restáuralas desde Explorar.</div>
+  <div class="box tip"><span class="t">Consejo</span>Ten un disco sin cifrar en casa y cifra solo el que guardas fuera.</div>
+</section>
+
+<!-- 10 -->
+<section>
+  <h2><span class="n">10</span>iPhone, iPad, Safari y Firefox</h2>
+  <div class="row">
+    <div>
+      <p>Estos navegadores no permiten que una web escriba en un disco, así que la app funciona en <b>modo compatible</b>.</p>
+      <ol class="steps">
+        <li><b>Añadir fotos y vídeos</b> (en el ordenador también <b>Añadir una carpeta entera</b>).</li>
+        <li>Opcional: si el disco ya tiene backups de otros dispositivos, elige su archivo <code>.backup-manifest.json</code> para no repetirlos.</li>
+        <li><b>Analizar</b>: se descartan las dañadas y repetidas, como en el modo completo.</li>
+        <li><b>Descargar</b> los ZIP (por lotes) y guárdalos en el disco. En iPhone: <i>Compartir → Guardar en Archivos</i>, elige el disco y toca el ZIP para descomprimirlo.</li>
+      </ol>
+      <p>Los archivos conservan su fecha original y van ordenados en carpetas año/mes. La app recuerda lo ya exportado para no repetirlo.</p>
+    </div>
+    <figure class="phone" style="flex:0 0 38%"><img src="img/compatible.png" alt="" /><figcaption>Modo compatible en el móvil.</figcaption></figure>
+  </div>
+  <div class="box warn"><span class="t">iPhone: conserva los originales</span>Al elegir fotos, Safari a veces las convierte de HEIC a JPEG (pierden calidad y cambian en cada backup). La app te avisa si pasa. Para evitarlo, elígelas desde la app <b>Archivos</b> o, en la Fototeca, pulsa <b>Opciones → Actual</b>. Safari tampoco entrega el vídeo de las Live Photos.</div>
+  <p class="muted">Cuando uses ese disco en Chrome o Edge, pulsa <b>Herramientas → Incorporar archivos sueltos</b> para registrar y verificar lo que guardaste desde los ZIP.</p>
+</section>
+
+<!-- 11 -->
+<section>
+  <h2><span class="n">11</span>Ajustes</h2>
+  <div class="row">
+    <div>
+      <ul>
+        <li><b>Este dispositivo</b>: su nombre ("Portátil de Ana"), que queda registrado con cada foto.</li>
+        <li><b>Copia</b>: verificar cada archivo (recomendado), poner la fecha en el nombre y cada cuánto guardar el progreso.</li>
+        <li><b>Estructura</b>: todo junto (<code>2026/10/…</code>) o una carpeta por dispositivo.</li>
+        <li><b>Recordatorios</b>: avisar si un disco lleva muchos días sin backup y cada cuántos meses comprobar su integridad.</li>
+        <li><b>Descartar archivos que no sirven</b>: activar o desactivar cada filtro y ajustar sus umbrales. Los filtros de fotos borrosas y vídeos cortos están desactivados por defecto.</li>
+        <li><b>Cifrado</b>: ver capítulo 9.</li>
+      </ul>
+      <p>También puedes elegir el tema <b>claro, oscuro o según el sistema</b>: en el ordenador, abajo en la barra lateral; en el móvil, el icono de arriba a la derecha.</p>
+    </div>
+    <figure style="flex:0 0 44%"><img src="img/ajustes-filtros.png" alt="" /><figcaption>Filtros de descarte.</figcaption></figure>
+  </div>
+  <figure class="phone"><img src="img/movil.png" alt="" /><figcaption>La app en el móvil: pestañas abajo e indicador del backup arriba.</figcaption></figure>
+</section>
+
+<!-- 12 -->
+<section>
+  <h2><span class="n">12</span>Problemas frecuentes</h2>
+  <table>
+    <tr><th style="width:36%">Qué pasa</th><th>Qué hacer</th></tr>
+    <tr><td>El disco está conectado pero aparece como <b>no conectado</b></td><td>En Windows puede haber cambiado de letra (E: en vez de D:). Pulsa <b>Añadir</b> en <i>Dónde guardar</i> y elige otra vez su carpeta: la app lo reconoce y no repite nada.</td></tr>
+    <tr><td>Aparece <b>"Permitir acceso al disco"</b></td><td>Pulsa el botón y acepta el permiso del navegador.</td></tr>
+    <tr><td>Error al usar <b>el móvil</b> como origen</td><td>Comprueba que está desbloqueado y en "Transferencia de archivos". Si persiste, usa <b>Elegir fotos sueltas</b> o la app en el propio móvil (capítulo 5).</td></tr>
+    <tr><td><b>Vídeos de más de 4 GB</b> que no se copian</td><td>El disco está en FAT32. Copia su contenido a otro sitio y formatéalo en <b>exFAT</b>. Windows: clic derecho en el disco → Formatear → exFAT. Mac: Utilidad de Discos → Borrar → ExFAT.</td></tr>
+    <tr><td><b>Disco lleno</b></td><td>El backup se detiene y avisa. Libera espacio en el disco o usa otro; al repetir, sigue donde se quedó.</td></tr>
+    <tr><td>Fotos marcadas como <b>posible versión reducida</b></td><td>El original puede estar solo en la nube. iPhone: Ajustes → [tu nombre] → iCloud → Fotos → <i>Descargar y conservar originales</i>. Google Fotos: descarga la foto. Luego repite el backup.</td></tr>
+    <tr><td>La app se queda cargando</td><td>Cierra otras pestañas abiertas de la app y recarga la página.</td></tr>
+    <tr><td>Hay una <b>versión nueva</b></td><td>La app te avisa; pulsa <b>Actualizar</b> cuando no haya un backup en curso.</td></tr>
+    <tr><td>Fecha del archivo en el disco</td><td>El navegador no puede conservar la fecha original del archivo al copiarlo: por eso va en el nombre (<code>2026-10-09_143022_…</code>). Las fotos con EXIF conservan además su fecha dentro.</td></tr>
+  </table>
+</section>
+
+<!-- 13 -->
+<section class="cont">
+  <h2><span class="n">13</span>Buenas prácticas</h2>
+  <div class="box tip"><span class="t">Regla 3-2-1</span>Ten <b>3</b> copias de tus fotos, en <b>2</b> soportes distintos, y <b>1</b> fuera de casa. Lo ideal: el móvil u ordenador, un disco en casa y otro en otro sitio, alternándolos.</div>
+  <ul>
+    <li>Haz backup con regularidad (por ejemplo, una vez al mes) y deja que la app te recuerde los discos atrasados.</li>
+    <li>Comprueba la integridad de cada disco cada pocos meses (Herramientas → Comprobar disco).</li>
+    <li>Antes de liberar espacio, asegúrate de que las fotos están en dos discos.</li>
+    <li>Si usas cifrado, guarda la contraseña en un lugar seguro.</li>
+  </ul>
+  <div class="footer-note">
+    <b>Privacidad:</b> la app no tiene servidores ni analíticas, y el navegador le impide conectarse a cualquier sitio. Tus fotos y datos nunca salen de tu dispositivo.<br />
+    Más ayuda en la propia app, en la sección <b>Ayuda</b>.
+  </div>
+</section>
+
+</body>
+</html>
