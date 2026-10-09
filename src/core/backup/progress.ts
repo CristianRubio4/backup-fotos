@@ -1,6 +1,7 @@
-export type Phase = 'scan' | 'hash' | 'dedupe' | 'analyze' | 'copy' | 'verify' | 'save'
+export type Phase = 'disk' | 'scan' | 'hash' | 'dedupe' | 'analyze' | 'copy' | 'verify' | 'save'
 
 export const PHASES: Array<{ id: Phase; label: string }> = [
+  { id: 'disk', label: 'Revisando el disco' },
   { id: 'scan', label: 'Escaneando origen' },
   { id: 'hash', label: 'Calculando hashes' },
   { id: 'dedupe', label: 'Comprobando duplicados' },

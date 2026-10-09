@@ -1,4 +1,6 @@
-import type { ProgressFn, Target } from '../core/types'
+import { SKIP_DIRS } from '../core/media'
+import type { DiskKeys } from '../core/crypto'
+import type { DiskFile, ProgressFn, Target } from '../core/types'
 import { io } from './io'
 
 const isMissing = (err: unknown) => {
@@ -13,7 +15,11 @@ function split(path: string) {
 
 /** Disco de destino real sobre la File System Access API. */
 export class FsaTarget implements Target {
-  constructor(private root: FileSystemDirectoryHandle) {}
+  constructor(
+    private root: FileSystemDirectoryHandle,
+    /** Claves de un disco cifrado desbloqueado (cifra/descifra de forma transparente). */
+    readonly keys?: DiskKeys,
+  ) {}
 
   private async dir(parts: string[], create: boolean) {
     let d = this.root
@@ -99,6 +105,37 @@ export class FsaTarget implements Target {
       throw err
     }
     return io.hashHandle(h, onProgress)
+  }
+
+  async *walkFiles(): AsyncIterable<DiskFile> {
+    async function* visit(dir: FileSystemDirectoryHandle, prefix: string): AsyncIterable<DiskFile> {
+      for await (const [name, h] of dir.entries()) {
+        if (name.startsWith('.')) continue // archivos y carpetas de control (.backup-*, .Trashes…)
+        const path = prefix ? `${prefix}/${name}` : name
+        if (h.kind === 'directory') {
+          if (SKIP_DIRS.has(name.toLowerCase())) continue
+          yield* visit(h as FileSystemDirectoryHandle, path)
+        } else {
+          const f = await (h as FileSystemFileHandle).getFile()
+          yield { path, size: f.size, lastModified: f.lastModified }
+        }
+      }
+    }
+    yield* visit(this.root, '')
+  }
+
+  async readFile(path: string) {
+    try {
+      return await (await this.fileHandle(path, false)).getFile()
+    } catch (err) {
+      if (isMissing(err)) return null
+      throw err
+    }
+  }
+
+  /** Handle de un archivo existente (para leerlo desde el Worker). */
+  async existingHandle(path: string) {
+    return this.fileHandle(path, false)
   }
 
   async ping() {

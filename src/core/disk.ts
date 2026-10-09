@@ -1,3 +1,4 @@
+import type { EncryptionParams } from './crypto'
 import type { Target } from './types'
 
 export const DISK_ID_FILE = '.backup-disk-id'
@@ -6,6 +7,8 @@ export interface DiskInfo {
   id: string
   name: string
   createdAt: string
+  /** Solo en discos cifrados. */
+  encryption?: EncryptionParams
 }
 
 export function newId() {
@@ -20,6 +23,13 @@ export async function readDiskId(target: Target): Promise<DiskInfo | null> {
   } catch {
     return null
   }
+}
+
+/** Cambia el nombre guardado en el disco (conserva el identificador). */
+export async function renameDisk(target: Target, name: string) {
+  const info = await readDiskId(target)
+  if (!info) throw new Error('El disco no tiene identificador')
+  await target.writeText(DISK_ID_FILE, JSON.stringify({ ...info, name }, null, 2))
 }
 
 /** Lee el identificador del disco o lo crea la primera vez. */

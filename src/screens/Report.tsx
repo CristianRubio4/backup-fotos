@@ -152,6 +152,7 @@ export function ReportScreen() {
           {report.ignored.count > 0 && ` Se han ignorado ${report.ignored.count} archivos que no son fotos ni vídeos.`}
           {report.livePhotos > 0 && ` ${report.livePhotos} Live Photos (foto + vídeo) se han guardado juntas con el mismo nombre.`}
           {report.motionPhotos > 0 && ` ${report.motionPhotos} Motion Photos se han copiado con su vídeo incrustado.`}
+          {report.incorporated > 0 && ` ${report.incorporated} fotos que ya estaban en el disco (copiadas antes a mano) se han incorporado al registro sin tocarlas.`}
         </p>
       </Card>
 

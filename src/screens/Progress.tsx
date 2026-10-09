@@ -1,10 +1,12 @@
 import { Alert, Button, Card, ProgressBar, Stat } from '../components/ui'
 import { PHASES } from '../core/backup/progress'
 import { formatBytes, formatDuration } from '../core/format'
-import { useApp } from '../state/app'
+import { activeDisk, useApp } from '../state/app'
 
 export function ProgressScreen() {
-  const { progress: p, paused, running, pause, resume, cancel, waitReason, batteryPaused, battery, wake, diskName, grant } = useApp()
+  const { progress: p, paused, running, pause, resume, cancel, waitReason, batteryPaused, battery, wake, grantDisk } = useApp()
+  const disk = activeDisk()
+  const diskName = disk?.name ?? 'el disco'
 
   if (!running) return <p className="text-slate-500">No hay ningún backup en curso.</p>
   if (!p) return <p className="text-slate-500">Preparando…</p>
@@ -19,7 +21,7 @@ export function ProgressScreen() {
           {waitReason === 'needs-permission' ? (
             <>
               <p className="font-medium">El disco ha vuelto, pero hay que permitir de nuevo el acceso.</p>
-              <Button variant="primary" className="mt-2" onClick={() => grant('dest')}>
+              <Button variant="primary" className="mt-2" onClick={() => disk && grantDisk(disk.key)}>
                 Permitir acceso al disco
               </Button>
             </>

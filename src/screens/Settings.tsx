@@ -59,6 +59,26 @@ export function SettingsScreen() {
         </label>
       </Card>
 
+      <Card title="Estructura en el disco">
+        <label className="flex items-center gap-2 py-1 text-sm">
+          <input type="radio" name="layout" className="accent-emerald-600" checked={settings.layout === 'together'} onChange={() => saveSettings({ ...settings, layout: 'together' })} />
+          Todo junto: <code className="text-xs">2026/10/…</code>
+        </label>
+        <label className="flex items-center gap-2 py-1 text-sm">
+          <input type="radio" name="layout" className="accent-emerald-600" checked={settings.layout === 'per-device'} onChange={() => saveSettings({ ...settings, layout: 'per-device' })} />
+          Una carpeta por dispositivo: <code className="text-xs">{device.name || 'Móvil de Ana'}/2026/10/…</code>
+        </label>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          En ambos casos los duplicados se detectan entre todos los dispositivos: una foto que ya copió otro dispositivo no se vuelve a copiar.
+          El cambio afecta a las copias nuevas.
+        </p>
+      </Card>
+
+      <Card title="Recordatorios">
+        <NumberField label="Avisar si un disco lleva sin backup más de" value={settings.staleDays} min={1} max={365} unit="días" onChange={(n) => saveSettings({ ...settings, staleDays: n })} />
+        <NumberField label="Recordar comprobar la integridad cada" value={settings.integrityMonths} min={1} max={36} unit="meses" onChange={(n) => saveSettings({ ...settings, integrityMonths: n })} />
+      </Card>
+
       <FiltersCard />
     </>
   )
@@ -66,7 +86,7 @@ export function SettingsScreen() {
 
 function NumberField({ label, value, min, max, step = 1, unit, onChange }: { label: string; value: number; min: number; max: number; step?: number; unit: string; onChange: (n: number) => void }) {
   return (
-    <label className="ml-6 flex items-center justify-between gap-4 pb-2 text-xs text-slate-600 dark:text-slate-300">
+    <label className="flex items-center justify-between gap-4 pb-2 pl-6 text-xs text-slate-600 dark:text-slate-300 first:pl-0">
       <span>{label}</span>
       <span className="flex items-center gap-2">
         <input

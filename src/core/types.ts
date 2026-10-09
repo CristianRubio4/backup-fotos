@@ -26,6 +26,22 @@ export interface Target {
   hash(path: string, onProgress: ProgressFn, control: RunControl): Promise<string | null>
   /** true si el disco sigue accesible. */
   ping(): Promise<boolean>
+  /** Todos los archivos del disco (recursivo), salvo los de control (empiezan por "."). */
+  walkFiles(): AsyncIterable<DiskFile>
+  /** Contenido del archivo tal cual está en el disco, o null si no existe. */
+  readFile(path: string): Promise<Blob | null>
+}
+
+export interface DiskFile {
+  path: string
+  size: number
+  lastModified: number
+}
+
+/** Caché de hashes del origen, válida mientras no cambien tamaño ni fecha de modificación. */
+export interface HashCache {
+  get(f: SourceFile): Promise<string | undefined>
+  set(f: SourceFile, hash: string): Promise<void>
 }
 
 export interface SourceFile {
@@ -35,6 +51,11 @@ export interface SourceFile {
   size: number
   lastModified: number
   getFile(): Promise<Blob>
+  /** Identificador estable para la caché de hashes (origen + ruta). */
+  cacheKey?: string
+  /** Solo en la plataforma: handle del archivo y de su carpeta (para "Liberar espacio"). */
+  handle?: FileSystemFileHandle
+  parent?: FileSystemDirectoryHandle
 }
 
 export interface Hasher {

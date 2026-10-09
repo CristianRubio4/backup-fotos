@@ -13,9 +13,12 @@ export async function walkSource(
   exclude: FileSystemDirectoryHandle | null,
   control: RunControl,
   onFound: (count: number) => void,
+  /** Con varios orígenes: nombre del origen como primer tramo de la ruta, y clave para la caché de hashes. */
+  opts: { label?: string; cacheKeyPrefix?: string; baseCount?: number } = {},
 ): Promise<ScanResult> {
   const files: SourceFile[] = []
   const ignored: string[] = []
+  const base = opts.baseCount ?? 0
 
   async function visit(dir: FileSystemDirectoryHandle, prefix: string) {
     for await (const [name, handle] of dir.entries()) {
@@ -35,19 +38,22 @@ export async function walkSource(
       const fh = handle as FileSystemFileHandle
       const file = await fh.getFile()
       files.push({
-        relPath: rel,
+        relPath: opts.label ? `${opts.label}/${rel}` : rel,
         name,
         size: file.size,
         lastModified: file.lastModified,
         getFile: () => fh.getFile(),
+        cacheKey: opts.cacheKeyPrefix ? `${opts.cacheKeyPrefix}:${rel}` : undefined,
+        handle: fh,
+        parent: dir,
       })
-      if (files.length % 50 === 0) onFound(files.length)
+      if (files.length % 50 === 0) onFound(base + files.length)
     }
   }
 
   await visit(root, '')
-  onFound(files.length)
-  return { files, ignored }
+  onFound(base + files.length)
+  return { files, ignored: opts.label ? ignored.map((p) => `${opts.label}/${p}`) : ignored }
 }
 
 /** ¿Está `inner` dentro de `outer` (o es la misma carpeta)? */

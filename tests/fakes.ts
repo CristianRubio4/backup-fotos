@@ -91,6 +91,20 @@ export class MemoryTarget implements Target {
     return !this.disconnected
   }
 
+  async *walkFiles() {
+    this.check()
+    for (const [path, b] of [...this.files].sort(([a], [b]) => a.localeCompare(b))) {
+      if (path.split('/').some((seg) => seg.startsWith('.'))) continue
+      yield { path, size: b.byteLength, lastModified: 0 }
+    }
+  }
+
+  async readFile(path: string) {
+    this.check()
+    const b = this.files.get(path)
+    return b ? new Blob([b]) : null
+  }
+
   mediaPaths() {
     return [...this.files.keys()].filter((k) => !k.startsWith('.')).sort()
   }

@@ -27,6 +27,12 @@ export interface Settings {
   dateInName: boolean
   /** Guardar el progreso (diario del manifest) cada N archivos copiados. */
   saveEvery: number
+  /** Todo junto (año/mes) o una subcarpeta por dispositivo (Móvil de Ana/año/mes). */
+  layout: 'together' | 'per-device'
+  /** Avisar si un disco lleva más de estos días sin backup. */
+  staleDays: number
+  /** Recordar comprobar la integridad del disco cada estos meses. */
+  integrityMonths: number
   filters: FilterSettings
 }
 
@@ -48,6 +54,9 @@ export const DEFAULT_SETTINGS: Settings = {
   verifyHash: true,
   dateInName: true,
   saveEvery: 20,
+  layout: 'together',
+  staleDays: 30,
+  integrityMonths: 6,
   filters: DEFAULT_FILTERS,
 }
 

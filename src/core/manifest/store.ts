@@ -76,7 +76,7 @@ export class ManifestStore {
    * aplica el diario de backups interrumpidos. Si existen archivos de
    * manifest pero ninguno es válido, lanza ManifestCorruptError.
    */
-  static async open(target: Target, diskId: string, now = new Date()) {
+  static async open(target: Target, diskId: string, now = new Date(), opts: { ignoreCorrupt?: boolean } = {}) {
     const [mainText, tmpText] = await Promise.all([
       target.readText(MANIFEST_FILE),
       target.readText(MANIFEST_TMP),
@@ -98,7 +98,7 @@ export class ManifestStore {
       if (bak) {
         manifest = bak
         source = 'bak'
-      } else if (mainText !== null || tmpText !== null || bakText !== null) {
+      } else if (!opts.ignoreCorrupt && (mainText !== null || tmpText !== null || bakText !== null)) {
         throw new ManifestCorruptError()
       }
     }

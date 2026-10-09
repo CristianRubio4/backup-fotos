@@ -5,7 +5,8 @@ import { ensureDiskId } from '../disk'
 import type { EntryStatus, ManifestEntry } from '../manifest/schema'
 import { ManifestStore, type ManifestRecovery } from '../manifest/store'
 import { extOf, isVideo } from '../media'
-import { datedName, folderFor, pickDate, toLocalIso, withSuffix } from '../naming'
+import { datedName, folderFor, pickDate, sanitizeName, toLocalIso, withSuffix } from '../naming'
+import { incorporateDiskFiles } from './incorporate'
 import type { Device, Settings } from '../settings'
 import {
   CancelledError,
@@ -15,6 +16,7 @@ import {
   type Analyzer,
   type ExifInfo,
   type ExifReader,
+  type HashCache,
   type Hasher,
   type RunControl,
   type SourceFile,
@@ -60,6 +62,8 @@ export interface BackupReport {
   livePhotos: number
   /** Motion Photos (JPEG con vídeo incrustado) copiadas. */
   motionPhotos: number
+  /** Fotos que ya estaban en el disco (copiadas fuera de la app) incorporadas al manifest. */
+  incorporated: number
   bytesCopied: number
   manifest: ManifestRecovery | null
 }
@@ -93,6 +97,10 @@ export interface EngineInput {
   waitForDisk?: (diskId: string) => Promise<void>
   /** Tamaño máximo de archivo en FAT32 (configurable solo para los tests). */
   fat32Limit?: number
+  /** Caché de hashes del origen: solo se recalcula el hash de archivos nuevos o modificados. */
+  hashCache?: HashCache
+  /** Disco cifrado: nombres aleatorios en el disco, sin fecha ni nombre original. */
+  encrypted?: boolean
   now?: () => Date
 }
 
@@ -151,6 +159,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     fat32: [],
     livePhotos: 0,
     motionPhotos: 0,
+    incorporated: 0,
     bytesCopied: 0,
     manifest: null,
   }
@@ -237,6 +246,29 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       }
     }
 
+    // ---- Primer uso de un disco con fotos previas: incorporarlas al manifest ----
+    if (opened.recovery.source === 'new' && !input.encrypted) {
+      setPhase('disk', 0)
+      const inc = await incorporateDiskFiles({
+        target,
+        store: manifest,
+        control,
+        onPlanned: (files, bytes) => {
+          progress.phaseTotal = files
+          progress.totalBytes += bytes
+        },
+        onProgress: (p) => {
+          progress.phaseDone = p.done
+          progress.currentFile = p.current
+          emit()
+        },
+        onBytes,
+        now,
+      })
+      report.incorporated = inc.added
+      if (inc.added > 0) await manifest.flushJournal()
+    }
+
     // ---- Escaneo ----
     setPhase('scan', 0)
     const scan = await input.scan((count) => {
@@ -263,7 +295,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     const sum = (list: SourceFile[]) => list.reduce((a, f) => a + f.size, 0)
     const copyFactor = settings.verifyHash ? 2 : 1
     // Estimación inicial: todo lo que no tiene hash se copiará; se ajusta tras deduplicar y analizar.
-    progress.totalBytes = sum(preHash) + sum(files) * copyFactor
+    const baseBytes = progress.doneBytes
+    progress.totalBytes = baseBytes + sum(preHash) + sum(files) * copyFactor
 
     setPhase('hash', preHash.length)
     const hashes = new Map<SourceFile, string>()
@@ -271,7 +304,15 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       await control.checkpoint()
       progress.currentFile = f.relPath
       try {
-        hashes.set(f, await hasher.hash(await f.getFile(), onBytes, control))
+        const cached = await input.hashCache?.get(f)
+        if (cached) {
+          hashes.set(f, cached)
+          onBytes(f.size)
+        } else {
+          const h = await hasher.hash(await f.getFile(), onBytes, control)
+          hashes.set(f, h)
+          await input.hashCache?.set(f, h)
+        }
       } catch (err) {
         if (err instanceof CancelledError) throw err
         report.errors.push(item(f, { reason: `No se pudo leer: ${errorMessage(err)}` }))
@@ -354,7 +395,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     }
     // Las fotos antes que sus vídeos de Live Photo, para que el vídeo tome el nombre de la foto.
     toCopy.sort((a, b) => Number(photoOfVideo.has(a.file)) - Number(photoOfVideo.has(b.file)))
-    progress.totalBytes = sum(preHash) + sum(toCopy.map((h) => h.file)) * copyFactor
+    progress.totalBytes = baseBytes + sum(preHash) + sum(toCopy.map((h) => h.file)) * copyFactor
     progress.doneBytes = Math.min(progress.doneBytes, progress.totalBytes)
 
     // ---- Copia y verificación ----
@@ -404,6 +445,9 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       return (await target.hash(candidate, onBytes, control)) === known.hash ? 'same' : 'taken'
     }
 
+    /** Con "una carpeta por dispositivo": Móvil de Ana/2026/10/… */
+    const devicePrefix = settings.layout === 'per-device' ? `${sanitizeName(device.name)}/` : ''
+
     /** Elige la ruta en el disco: junto a su foto si es el vídeo de una Live Photo; si no, año/mes + nombre con fecha. */
     const choosePath = async (f: SourceFile, a: Analysis, blob: Blob, known: { hash: string | null }) => {
       let path = ''
@@ -411,13 +455,22 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       // Vídeo de Live Photo: mismo nombre que su foto (IMG_1234.HEIC → IMG_1234.MOV).
       const photo = photoOfVideo.get(f)
       const photoPlace = photo && placed.get(photo)
+      if (input.encrypted) {
+        // Disco cifrado: el nombre no revela nada (ni fecha, ni nombre original, ni tipo).
+        for (; state === 'taken'; ) {
+          const id = crypto.randomUUID().replaceAll('-', '')
+          path = `${id.slice(0, 2)}/${id}.bin`
+          state = await tryPath(path, f, blob, known)
+        }
+        return { path, state, photoPlace }
+      }
       if (photoPlace) {
         path = swapExt(photoPlace.diskPath, f.name)
         state = await tryPath(path, f, blob, known)
       }
       if (state === 'taken') {
         const { date } = pickDate(a.exif.date, f.lastModified, now())
-        const dir = folderFor(date)
+        const dir = devicePrefix + folderFor(date)
         const base = datedName(f.name, date, settings.dateInName)
         for (let n = 0; state === 'taken'; n++) {
           path = `${dir}/${withSuffix(base, n)}`
@@ -469,6 +522,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
             note = a.verdict.note
           }
           register(f, { hash: result.hash, diskPath: path, exifDate, status, note, ...extra })
+          await input.hashCache?.set(f, result.hash)
           known.hash = result.hash
           report.copied.push(item(f, { diskPath: path }))
           report.bytesCopied += f.size
