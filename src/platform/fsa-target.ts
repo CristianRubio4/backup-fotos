@@ -1,5 +1,6 @@
+import { decryptBytes, encryptBytes, plainSize, type DiskKeys } from '../core/crypto'
+import { DISK_ID_FILE } from '../core/disk'
 import { SKIP_DIRS } from '../core/media'
-import type { DiskKeys } from '../core/crypto'
 import type { DiskFile, ProgressFn, Target } from '../core/types'
 import { io } from './io'
 
@@ -13,13 +14,21 @@ function split(path: string) {
   return { dirs: parts.slice(0, -1), name: parts[parts.length - 1] }
 }
 
-/** Disco de destino real sobre la File System Access API. */
+/**
+ * Disco (o carpeta) sobre la File System Access API. Con `keys` (disco
+ * cifrado y desbloqueado), todo se cifra al escribir y se descifra al leer,
+ * salvo .backup-disk-id, que debe poder leerse sin la contraseña.
+ */
 export class FsaTarget implements Target {
   constructor(
     private root: FileSystemDirectoryHandle,
     /** Claves de un disco cifrado desbloqueado (cifra/descifra de forma transparente). */
     readonly keys?: DiskKeys,
   ) {}
+
+  private encrypts(path: string) {
+    return !!this.keys && path !== DISK_ID_FILE
+  }
 
   private async dir(parts: string[], create: boolean) {
     let d = this.root
@@ -33,20 +42,24 @@ export class FsaTarget implements Target {
   }
 
   async readText(path: string) {
+    let file: File
     try {
-      return await (await (await this.fileHandle(path, false)).getFile()).text()
+      file = await (await this.fileHandle(path, false)).getFile()
     } catch (err) {
       if (isMissing(err)) return null
       throw err
     }
+    if (!this.encrypts(path)) return file.text()
+    return new TextDecoder().decode(await decryptBytes(this.keys!, new Uint8Array(await file.arrayBuffer())))
   }
 
   async writeText(path: string, text: string) {
     const h = await this.fileHandle(path, true)
+    const data = this.encrypts(path) ? await encryptBytes(this.keys!, new TextEncoder().encode(text)) : text
     // createWritable escribe en un .crswap y reemplaza el original al cerrar.
     const w = await h.createWritable({ keepExistingData: false })
     try {
-      await w.write(text)
+      await w.write(data as Uint8Array<ArrayBuffer> | string)
       await w.close()
     } catch (err) {
       await w.abort().catch(() => {})
@@ -56,7 +69,9 @@ export class FsaTarget implements Target {
 
   async stat(path: string) {
     try {
-      return { size: (await (await this.fileHandle(path, false)).getFile()).size }
+      const size = (await (await this.fileHandle(path, false)).getFile()).size
+      // En un disco cifrado se informa del tamaño del contenido original.
+      return { size: this.encrypts(path) ? plainSize(size) : size }
     } catch (err) {
       if (isMissing(err)) return null
       throw err
@@ -89,7 +104,7 @@ export class FsaTarget implements Target {
     // getFileHandle({create:true}) crea ya un archivo vacío: si la copia falla, se elimina.
     const h = await this.fileHandle(path, true)
     try {
-      return await io.copy(file, h, onProgress)
+      return this.encrypts(path) ? await io.copyEncrypted(file, h, this.keys!, onProgress) : await io.copy(file, h, onProgress)
     } catch (err) {
       if (!existed) await this.remove(path).catch(() => {})
       throw err
@@ -104,10 +119,11 @@ export class FsaTarget implements Target {
       if (isMissing(err)) return null
       throw err
     }
-    return io.hashHandle(h, onProgress)
+    return this.encrypts(path) ? io.hashEncrypted(h, this.keys!, onProgress) : io.hashHandle(h, onProgress)
   }
 
   async *walkFiles(): AsyncIterable<DiskFile> {
+    const encrypted = !!this.keys
     async function* visit(dir: FileSystemDirectoryHandle, prefix: string): AsyncIterable<DiskFile> {
       for await (const [name, h] of dir.entries()) {
         if (name.startsWith('.')) continue // archivos y carpetas de control (.backup-*, .Trashes…)
@@ -117,25 +133,24 @@ export class FsaTarget implements Target {
           yield* visit(h as FileSystemDirectoryHandle, path)
         } else {
           const f = await (h as FileSystemFileHandle).getFile()
-          yield { path, size: f.size, lastModified: f.lastModified }
+          yield { path, size: encrypted ? plainSize(f.size) : f.size, lastModified: f.lastModified }
         }
       }
     }
     yield* visit(this.root, '')
   }
 
+  /** Contenido del archivo (descifrado en memoria si el disco está cifrado: úsese para archivos pequeños). */
   async readFile(path: string) {
+    let file: File
     try {
-      return await (await this.fileHandle(path, false)).getFile()
+      file = await (await this.fileHandle(path, false)).getFile()
     } catch (err) {
       if (isMissing(err)) return null
       throw err
     }
-  }
-
-  /** Handle de un archivo existente (para leerlo desde el Worker). */
-  async existingHandle(path: string) {
-    return this.fileHandle(path, false)
+    if (!this.encrypts(path)) return file
+    return new Blob([(await decryptBytes(this.keys!, new Uint8Array(await file.arrayBuffer()))) as Uint8Array<ArrayBuffer>])
   }
 
   /**
@@ -144,9 +159,19 @@ export class FsaTarget implements Target {
    * contenido restaurado.
    */
   async exportTo(path: string, dest: FsaTarget, destPath: string, onProgress: ProgressFn) {
-    const src = await this.readFile(path)
-    if (!src) throw new DOMException(`No existe ${path}`, 'NotFoundError')
-    return dest.copyIn(destPath, src, onProgress)
+    if (!this.encrypts(path)) {
+      const src = await this.readFile(path)
+      if (!src) throw new DOMException(`No existe ${path}`, 'NotFoundError')
+      return dest.copyIn(destPath, src, onProgress)
+    }
+    const src = await this.fileHandle(path, false)
+    const out = await dest.fileHandle(destPath, true)
+    try {
+      return await io.decryptTo(src, out, this.keys!, onProgress)
+    } catch (err) {
+      await dest.remove(destPath).catch(() => {})
+      throw err
+    }
   }
 
   async ping() {

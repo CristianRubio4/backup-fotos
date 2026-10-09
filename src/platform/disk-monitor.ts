@@ -3,7 +3,7 @@ import { FsaTarget } from './fsa-target'
 
 export type DiskStatus =
   | { state: 'none' } // no hay carpeta de backup configurada
-  | { state: 'connected'; name: string; id: string | null }
+  | { state: 'connected'; name: string; id: string | null; encrypted: boolean }
   | { state: 'disconnected' }
   | { state: 'needs-permission' }
 
@@ -24,7 +24,7 @@ export async function checkDisk(handle: FileSystemDirectoryHandle | null): Promi
   const target = new FsaTarget(handle)
   if (!(await target.ping())) return { state: 'disconnected' }
   const info = await readDiskId(target)
-  return { state: 'connected', name: info?.name ?? handle.name, id: info?.id ?? null }
+  return { state: 'connected', name: info?.name ?? handle.name, id: info?.id ?? null, encrypted: !!info?.encryption }
 }
 
 export const DISK_POLL_MS = 3000

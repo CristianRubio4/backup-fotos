@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { EncryptionCard } from '../components/EncryptionCard'
 import { Button, Card, Toggle } from '../components/ui'
 import { DEFAULT_FILTERS, type FilterSettings } from '../core/settings'
 import { useApp } from '../state/app'
@@ -80,6 +81,8 @@ export function SettingsScreen() {
       </Card>
 
       <FiltersCard />
+
+      <EncryptionCard />
     </>
   )
 }

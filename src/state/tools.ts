@@ -55,6 +55,8 @@ interface ToolsState {
   runRebuild(): Promise<void>
   runIncorporate(): Promise<void>
   runRestore(entries: ManifestEntry[]): Promise<void>
+  /** Restaurar/descifrar: todo el disco cifrado a una carpeta. */
+  runDecryptAll(): Promise<void>
   cancel(): void
 }
 
@@ -221,6 +223,18 @@ export const useTools = create<ToolsState>((set, get) => ({
       set({ incorporate: r })
       await saveDiskIndex(disk)
     })
+  },
+
+  async runDecryptAll() {
+    let disk: DiskRecord
+    try {
+      disk = readyDisk()
+    } catch (err) {
+      return set({ error: (err as Error).message })
+    }
+    const entries = (await openStore(disk)).entries()
+    if (!confirm(`Se descifrarán ${entries.length} archivos a la carpeta que elijas, con sus nombres originales y ordenados por año/mes. ¿Continuar?`)) return
+    await get().runRestore(entries)
   },
 
   async runRestore(entries) {

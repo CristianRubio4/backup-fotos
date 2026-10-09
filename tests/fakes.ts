@@ -1,3 +1,6 @@
+import { decryptBytes, encryptBytes, plainSize, type DiskKeys } from '../src/core/crypto'
+import { decryptCopy, encryptCopy } from '../src/core/crypto-io'
+import { DISK_ID_FILE } from '../src/core/disk'
 import { hashBlob, hashStream } from '../src/core/hash'
 import type { Hasher, ProgressFn, RunControl, SourceFile, Target } from '../src/core/types'
 
@@ -107,6 +110,56 @@ export class MemoryTarget implements Target {
 
   mediaPaths() {
     return [...this.files.keys()].filter((k) => !k.startsWith('.')).sort()
+  }
+}
+
+/** Disco en memoria cifrado: mismas reglas que FsaTarget con claves (todo cifrado salvo .backup-disk-id). */
+export class EncryptedMemoryTarget extends MemoryTarget {
+  constructor(public keys: DiskKeys) {
+    super()
+  }
+
+  private enc(path: string) {
+    return path !== DISK_ID_FILE
+  }
+
+  async readText(path: string) {
+    const b = this.files.get(path)
+    if (!b || !this.enc(path)) return super.readText(path)
+    return new TextDecoder().decode(await decryptBytes(this.keys, b))
+  }
+
+  async writeText(path: string, text: string) {
+    if (!this.enc(path)) return super.writeText(path, text)
+    this.files.set(path, (await encryptBytes(this.keys, new TextEncoder().encode(text))) as Uint8Array<ArrayBuffer>)
+  }
+
+  async stat(path: string) {
+    const b = this.files.get(path)
+    return b ? { size: this.enc(path) ? plainSize(b.byteLength) : b.byteLength } : null
+  }
+
+  async copyIn(path: string, file: Blob, onProgress: ProgressFn, control: RunControl) {
+    this.copyAttempts.push(path)
+    const parts: Uint8Array<ArrayBuffer>[] = []
+    const hash = await encryptCopy(this.keys, file, { write: (c) => void parts.push(c.slice()) }, onProgress, control)
+    this.files.set(path, new Uint8Array(await new Blob(parts).arrayBuffer()))
+    return hash
+  }
+
+  async hash(path: string, onProgress: ProgressFn, control: RunControl) {
+    const b = this.files.get(path)
+    if (!b) return null
+    return decryptCopy(this.keys, new Blob([b]), null, onProgress, control).catch(() => 'no-descifra')
+  }
+
+  async *walkFiles() {
+    for await (const f of super.walkFiles()) yield { ...f, size: plainSize(f.size) }
+  }
+
+  async readFile(path: string) {
+    const b = this.files.get(path)
+    return b ? new Blob([(await decryptBytes(this.keys, b)) as Uint8Array<ArrayBuffer>]) : null
   }
 }
 

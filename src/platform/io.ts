@@ -1,4 +1,5 @@
 import * as Comlink from 'comlink'
+import type { DiskKeys, EncryptionParams } from '../core/crypto'
 import { CancelledError, type ExifReader, type Hasher, type ProgressFn } from '../core/types'
 import type { IoApi } from '../workers/io.worker'
 
@@ -25,6 +26,11 @@ export const io = {
   readExif: (file: Blob) => remote.readExif(file),
   inspect: (file: Blob, opts: Parameters<IoApi['inspect']>[1]) => remote.inspect(file, opts),
   heicThumbnail: (file: Blob, size: number) => remote.heicThumbnail(file, size),
+  copyEncrypted: (file: Blob, h: FileSystemFileHandle, keys: DiskKeys, onProgress: ProgressFn) => call(remote.copyEncrypted(file, h, keys, Comlink.proxy(onProgress))),
+  hashEncrypted: (h: FileSystemFileHandle, keys: DiskKeys, onProgress: ProgressFn) => call(remote.hashEncrypted(h, keys, Comlink.proxy(onProgress))),
+  decryptTo: (src: FileSystemFileHandle, dest: FileSystemFileHandle, keys: DiskKeys, onProgress: ProgressFn) => call(remote.decryptTo(src, dest, keys, Comlink.proxy(onProgress))),
+  createEncryption: (password: string) => remote.createEncryption(password),
+  unlock: (password: string, params: EncryptionParams) => remote.unlock(password, params),
 }
 
 /** La pausa/cancelación del motor se reenvía al Worker (ver BackupStore). */

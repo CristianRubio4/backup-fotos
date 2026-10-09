@@ -6,7 +6,7 @@ import { daysSince, formatDateTime } from '../core/format'
 import type { DiskRecord } from '../db'
 import { capabilities } from '../platform/capabilities'
 import { activeDisk, useApp } from '../state/app'
-import { isLocked } from '../state/keys'
+import { isLocked, useKeys } from '../state/keys'
 
 const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
 
@@ -20,6 +20,7 @@ const ANDROID_FOLDERS: Array<[string, string]> = [
 
 function DiskRow({ disk, active, showUse }: { disk: DiskRecord; active: boolean; showUse: boolean }) {
   const { diskStates, settings, running, setActiveDisk, grantDisk, renameDisk, removeDisk } = useApp()
+  useKeys()
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(disk.name)
   const status = diskStates[disk.key]
@@ -82,6 +83,7 @@ function DiskRow({ disk, active, showUse }: { disk: DiskRecord; active: boolean;
 
 export function HomeScreen() {
   const { sources, disks, diskStates, settings, running, addSource, removeSource, grantSource, addDisk, start, go } = useApp()
+  useKeys()
   const [showTips, setShowTips] = useState(false)
 
   if (!capabilities.fsAccess) {

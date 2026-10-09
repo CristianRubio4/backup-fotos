@@ -2,6 +2,8 @@ import * as Comlink from 'comlink'
 import exifr from 'exifr'
 import type { Features } from '../core/analysis/classify'
 import { blobSource, byteFeatures, DECODABLE_IMAGES } from '../core/analysis/formats'
+import { createEncryption, unlock, type DiskKeys, type EncryptionParams } from '../core/crypto'
+import { decryptCopy, encryptCopy } from '../core/crypto-io'
 import { hashStream } from '../core/hash'
 import { CancelledError, type ExifInfo, type ProgressFn, type RunControl } from '../core/types'
 import { decodeHeif, decodeWithBrowser, heicThumbnail } from './image-analysis'
@@ -91,6 +93,49 @@ const api = {
       await writable.abort().catch(() => {})
       throw err
     }
+  },
+
+  // ---- Discos cifrados ----
+
+  /** Copia cifrando; devuelve el hash del contenido original. */
+  async copyEncrypted(file: Blob, handle: FileSystemFileHandle, keys: DiskKeys, onProgress: ProgressFn) {
+    const writable = await handle.createWritable({ keepExistingData: false })
+    try {
+      const hash = await withProgress(onProgress, (p) => encryptCopy(keys, file, writable, p, control))
+      await writable.close()
+      return hash
+    } catch (err) {
+      await writable.abort().catch(() => {})
+      throw err
+    }
+  },
+
+  /** Hash del contenido original de un archivo cifrado (lo descifra al vuelo, sin guardarlo). */
+  async hashEncrypted(handle: FileSystemFileHandle, keys: DiskKeys, onProgress: ProgressFn) {
+    const file = await handle.getFile()
+    return withProgress(onProgress, (p) => decryptCopy(keys, file, null, p, control))
+  },
+
+  /** Restaurar: descifra un archivo del disco a otra carpeta. */
+  async decryptTo(src: FileSystemFileHandle, dest: FileSystemFileHandle, keys: DiskKeys, onProgress: ProgressFn) {
+    const file = await src.getFile()
+    const writable = await dest.createWritable({ keepExistingData: false })
+    try {
+      const hash = await withProgress(onProgress, (p) => decryptCopy(keys, file, writable, p, control))
+      await writable.close()
+      return hash
+    } catch (err) {
+      await writable.abort().catch(() => {})
+      throw err
+    }
+  },
+
+  /** Argon2id es lento a propósito (~1 s): se hace aquí para no bloquear la interfaz. */
+  createEncryption(password: string) {
+    return createEncryption(password)
+  },
+  unlock(password: string, params: EncryptionParams) {
+    return unlock(password, params)
   },
 
   /** Fecha de captura y dimensiones del EXIF. Solo lee el principio del archivo. */

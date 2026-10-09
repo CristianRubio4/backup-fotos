@@ -32,6 +32,24 @@ export async function renameDisk(target: Target, name: string) {
   await target.writeText(DISK_ID_FILE, JSON.stringify({ ...info, name }, null, 2))
 }
 
+/** Activa el cifrado en un disco (solo se permite si aún no tiene fotos ni manifest). */
+export async function setDiskEncryption(target: Target, encryption: EncryptionParams) {
+  const info = await readDiskId(target)
+  if (!info) throw new Error('El disco no tiene identificador')
+  if (info.encryption) throw new Error('Este disco ya está cifrado')
+  await target.writeText(DISK_ID_FILE, JSON.stringify({ ...info, encryption }, null, 2))
+}
+
+/** ¿Está el disco vacío (sin manifest ni archivos)? Requisito para activar el cifrado. */
+export async function isDiskEmpty(target: Target) {
+  if ((await target.readText('.backup-manifest.json')) !== null) return false
+  for await (const f of target.walkFiles()) {
+    void f
+    return false
+  }
+  return true
+}
+
 /** Lee el identificador del disco o lo crea la primera vez. */
 export async function ensureDiskId(target: Target, defaultName: string, now = new Date()): Promise<DiskInfo> {
   const text = await target.readText(DISK_ID_FILE)

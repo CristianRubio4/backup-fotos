@@ -84,7 +84,10 @@ export function ToolsScreen() {
           Ver lo que hay en el disco por fecha, dispositivo o tipo, y copiar fotos de vuelta a una carpeta.
           {disk?.encrypted ? ' En este disco cifrado, al restaurar se descifran.' : ' (En un disco sin cifrar también puedes abrir las fotos directamente desde cualquier ordenador.)'}
         </p>
-        <Button className="mt-3" disabled={!disk} onClick={() => go('explore')}>Abrir explorador</Button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button disabled={!disk} onClick={() => go('explore')}>Abrir explorador</Button>
+          {disk?.encrypted && <Button disabled={busy} onClick={t.runDecryptAll}>Descifrar todo el disco a una carpeta</Button>}
+        </div>
       </Card>
 
       <FreeSpace />

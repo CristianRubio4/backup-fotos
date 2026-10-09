@@ -325,8 +325,8 @@ export async function refreshDisks() {
   // Si el nombre del disco ha cambiado en su .backup-disk-id (otro dispositivo), se actualiza aquí.
   for (const d of disks) {
     const s = diskStates[d.key]
-    if (s?.state === 'connected' && ((s.id && s.id !== d.diskId) || s.name !== d.name) && s.id === (d.diskId ?? s.id)) {
-      void useApp.getState().updateDisk(d.key, { diskId: s.id, name: s.name })
+    if (s?.state === 'connected' && ((s.id && s.id !== d.diskId) || s.name !== d.name || s.encrypted !== !!d.encrypted) && s.id === (d.diskId ?? s.id)) {
+      void useApp.getState().updateDisk(d.key, { diskId: s.id, name: s.name, encrypted: s.encrypted })
     }
   }
   return diskStates

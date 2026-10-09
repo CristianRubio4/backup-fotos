@@ -1,3 +1,4 @@
+import { create } from 'zustand'
 import type { DiskKeys } from '../core/crypto'
 import { FsaTarget } from '../platform/fsa-target'
 
@@ -8,12 +9,17 @@ import { FsaTarget } from '../platform/fsa-target'
  */
 const keys = new Map<string, DiskKeys>()
 
+/** Lista reactiva de discos desbloqueados (para que la interfaz se actualice). */
+export const useKeys = create<{ unlocked: string[] }>(() => ({ unlocked: [] }))
+
 export function setDiskKeys(diskId: string, k: DiskKeys) {
   keys.set(diskId, k)
+  useKeys.setState({ unlocked: [...keys.keys()] })
 }
 
 export function forgetDiskKeys(diskId: string) {
   keys.delete(diskId)
+  useKeys.setState({ unlocked: [...keys.keys()] })
 }
 
 export function getDiskKeys(diskId: string | null) {
