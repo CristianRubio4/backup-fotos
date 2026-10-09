@@ -1,5 +1,6 @@
 import { classify, type DiscardCategory, type Features, type Verdict } from '../analysis/classify'
 import { findLivePhotos } from '../analysis/pairing'
+import { friendlyError } from '../errors'
 import { needsPreHash, planDedupe, type HashedFile } from '../dedupe'
 import { ensureDiskId } from '../disk'
 import type { EntryStatus, ManifestEntry } from '../manifest/schema'
@@ -73,6 +74,8 @@ export interface ScanResult {
   files: SourceFile[]
   /** Rutas de archivos que no son fotos ni vídeos. */
   ignored: string[]
+  /** Archivos o carpetas que no se han podido leer (se informa y se sigue con el resto). */
+  unreadable?: Array<{ relPath: string; reason: string }>
 }
 
 export interface EngineInput {
@@ -119,9 +122,9 @@ function item(f: SourceFile, extra: Partial<ReportItem> = {}): ReportItem {
   return { name: f.name, sourcePath: f.relPath, size: f.size, ...extra }
 }
 
+/** Mensaje en español (los errores del navegador llegan en inglés y con nombres técnicos). */
 function errorMessage(err: unknown) {
-  if (err instanceof Error) return err.name && err.name !== 'Error' ? `${err.name}: ${err.message}` : err.message
-  return String(err)
+  return friendlyError(err)
 }
 
 /** IMG_1.HEIC → IMG_1.MOV (conservando la extensión original del vídeo). */
@@ -281,6 +284,10 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     })
     report.scanned = scan.files.length
     report.ignored = { count: scan.ignored.length, sample: scan.ignored.slice(0, 50) }
+    for (const u of scan.unreadable ?? []) {
+      report.errors.push({ name: u.relPath.split('/').pop() ?? u.relPath, sourcePath: u.relPath, size: 0, reason: `No se ha podido leer: ${u.reason}` })
+      counters.errors++
+    }
 
     const files: SourceFile[] = []
     for (const f of scan.files) {

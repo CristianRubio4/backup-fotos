@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { incorporateDiskFiles, type IncorporateResult } from '../core/backup/incorporate'
 import { SpeedMeter } from '../core/backup/progress'
 import { Controller } from '../core/control'
+import { friendlyError } from '../core/errors'
 import type { ManifestEntry } from '../core/manifest/schema'
 import { ManifestStore } from '../core/manifest/store'
 import { sanitizeName, withSuffix } from '../core/naming'
@@ -130,13 +131,19 @@ export async function scanSources(c: Controller, mode: 'read' | 'readwrite' = 'r
   const files: SourceFile[] = []
   const skipped: string[] = []
   for (const s of useApp.getState().sources) {
-    const perm = await ensurePermission(s.handle, mode, true)
-    if (perm !== 'granted') {
-      skipped.push(s.name)
-      continue
+    try {
+      const perm = await ensurePermission(s.handle, mode, true)
+      if (perm !== 'granted') {
+        skipped.push(s.name)
+        continue
+      }
+      const r = await walkSource(s.handle, exclude, c, () => {}, { label: s.name, cacheKeyPrefix: s.key })
+      files.push(...r.files)
+    } catch (err) {
+      if ((err as Error)?.name === 'CancelledError') throw err
+      // Carpeta no accesible (p. ej. móvil desconectado): se sigue con las demás.
+      skipped.push(`${s.name} (${friendlyError(err)})`)
     }
-    const r = await walkSource(s.handle, exclude, c, () => {}, { label: s.name, cacheKeyPrefix: s.key })
-    files.push(...r.files)
   }
   return { files, skipped }
 }

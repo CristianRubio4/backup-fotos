@@ -124,6 +124,31 @@ export function HelpScreen() {
         </p>
       </Section>
 
+      <Section title="Fotos del móvil">
+        <p>
+          <b>Puedes elegir una carpeta concreta o un dispositivo entero</b> (el móvil, una tarjeta SD, un disco): la app busca las fotos y vídeos
+          en todas las subcarpetas y se salta las del sistema (papelera, miniaturas, datos internos de las apps en Android/data).
+        </p>
+        <p>
+          <b>Móvil conectado por cable a un PC con Windows:</b> Windows lo muestra como "dispositivo portátil", no como un disco, y el navegador
+          no siempre puede recorrerlo. Si al añadirlo como carpeta da error, usa <b>Elegir fotos sueltas</b>: entra en Este equipo → tu móvil →
+          Almacenamiento interno → DCIM → Camera, pulsa Ctrl + A y Abrir.
+        </p>
+        <p>
+          <b>En el propio móvil (Chrome en Android):</b> añade DCIM (y WhatsApp, capturas…) como origen y guarda en un disco conectado por USB-OTG
+          o en otra carpeta del móvil o de su tarjeta SD.
+        </p>
+        <p>Si un archivo no se puede leer (por ejemplo, porque el móvil lo estaba moviendo en ese momento), se anota en el informe y el backup sigue con el resto.</p>
+      </Section>
+
+      <Section title="Dónde guardar el backup">
+        <p>
+          El destino puede ser <b>cualquier carpeta</b>: un disco externo, un pendrive, una tarjeta SD o una carpeta de este mismo ordenador o
+          móvil. Lo recomendable es que al menos una copia esté en un dispositivo distinto del original (si se estropea el portátil, una copia en
+          su propio disco duro se pierde con él).
+        </p>
+      </Section>
+
       <Section title="Cifrado (opcional)">
         <p>
           Puedes cifrar un disco nuevo con una contraseña (Ajustes → Cifrado). Se usa AES-256-GCM con una clave derivada con Argon2id; el

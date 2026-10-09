@@ -25,5 +25,17 @@ export function isVideo(name: string) {
 
 /** Carpetas del sistema que nunca contienen fotos del usuario. */
 export const SKIP_DIRS = new Set([
-  '$recycle.bin', 'system volume information', '.trashes', '.spotlight-v100', '.fseventsd', '.thumbnails', '.trash',
+  '$recycle.bin', 'system volume information', '.trashes', '.spotlight-v100', '.fseventsd', '.thumbnails', '.trash', 'lost.dir',
 ])
+
+/**
+ * ¿Saltar esta carpeta al buscar fotos? Además de las del sistema y las
+ * ocultas, al recorrer un móvil entero se excluyen Android/data y
+ * Android/obb (datos internos de las apps: miles de imágenes que no son
+ * fotos del usuario). Android/media sí se recorre: ahí están las de WhatsApp.
+ */
+export function skipDir(name: string, relPath: string) {
+  const n = name.toLowerCase()
+  if (SKIP_DIRS.has(n) || name.startsWith('.')) return true
+  return /(^|\/)android\/(data|obb)$/i.test(relPath)
+}

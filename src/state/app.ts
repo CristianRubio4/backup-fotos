@@ -4,6 +4,8 @@ import { runBackup, type BackupReport } from '../core/backup/engine'
 import type { Progress } from '../core/backup/progress'
 import { mergeForced } from '../core/backup/report'
 import { Controller } from '../core/control'
+import { friendlyError } from '../core/errors'
+import { isMedia } from '../core/media'
 import { ensureDiskId, renameDisk } from '../core/disk'
 import { ManifestStore } from '../core/manifest/store'
 import { DEFAULT_SETTINGS, type Device, type Settings } from '../core/settings'
@@ -14,7 +16,7 @@ import { capabilities, ensurePermission } from '../platform/capabilities'
 import { checkDisk, DISK_POLL_MS, type DiskStatus } from '../platform/disk-monitor'
 import { io, POOL_SIZE, workerExif, workerHasher } from '../platform/io'
 import { BATTERY_PAUSE, BATTERY_WARN, keepScreenOn, readBattery, watchBattery, type BatteryInfo, type WakeState } from '../platform/power'
-import { isInside, walkSource } from '../platform/walk'
+import { checkReadable, isInside, walkSource } from '../platform/walk'
 import { diskTarget, isLocked } from './keys'
 
 /** Por qué está esperando un backup interrumpido por el disco. */
@@ -48,6 +50,14 @@ interface AppState {
   battery: BatteryInfo | null
   /** Pausado automáticamente por batería baja. */
   batteryPaused: boolean
+  /**
+   * Fotos elegidas con el selector de archivos (p. ej. de un móvil conectado
+   * por USB a Windows, que el selector de carpetas no puede recorrer). Solo
+   * duran esta sesión.
+   */
+  pickedFiles: SourceFile[]
+  addPickedFiles(list: FileList | null): void
+  clearPickedFiles(): void
 
   init(): Promise<void>
   go(screen: Screen): void
@@ -73,6 +83,8 @@ interface AppState {
 }
 
 let controller: Controller | null = null
+/** Primer tramo de la ruta de las fotos elegidas con el selector de archivos. */
+export const PICKED_LABEL = 'Fotos elegidas'
 const BASE_TITLE = 'Backup de fotos'
 
 function isAbort(err: unknown) {
@@ -109,6 +121,23 @@ export const useApp = create<AppState>((set, get) => ({
   wake: 'off',
   battery: null,
   batteryPaused: false,
+  pickedFiles: [],
+
+  addPickedFiles(list) {
+    if (!list) return
+    const seen = new Set(get().pickedFiles.map((f) => `${f.relPath}|${f.size}`))
+    const added: SourceFile[] = []
+    for (const file of Array.from(list)) {
+      if (!isMedia(file.name)) continue
+      const rel = `${PICKED_LABEL}/${(file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name}`
+      if (seen.has(`${rel}|${file.size}`)) continue
+      seen.add(`${rel}|${file.size}`)
+      added.push({ relPath: rel, name: file.name, size: file.size, lastModified: file.lastModified, getFile: async () => file, cacheKey: `picked:${rel}` })
+    }
+    set({ pickedFiles: [...get().pickedFiles, ...added] })
+  },
+
+  clearPickedFiles: () => set({ pickedFiles: [] }),
 
   async init() {
     onDbBlocked(() =>
@@ -153,7 +182,8 @@ export const useApp = create<AppState>((set, get) => ({
       const h = await window.showDirectoryPicker({ id: 'backup-origen', mode: 'read', startIn: 'pictures' })
       const { sources } = get()
       for (const s of sources) {
-        if (await s.handle.isSameEntry(h)) return set({ notice: `Esa carpeta ya está añadida como "${s.name}".` })
+        // Una carpeta guardada que ya no existe (móvil desconectado) no debe impedir añadir otra.
+        if (await s.handle.isSameEntry(h).catch(() => false)) return set({ notice: `Esa carpeta ya está añadida como "${s.name}".` })
       }
       const rec: SourceRecord = { key: crypto.randomUUID(), name: uniqueName(h.name, sources.map((s) => s.name)), handle: h, addedAt: new Date().toISOString() }
       await db.putSource(rec)
@@ -255,14 +285,27 @@ export const useApp = create<AppState>((set, get) => ({
     const sources: SourceView[] = []
     const skipped: string[] = []
     for (const s of get().sources) {
-      const perm = await ensurePermission(s.handle, 'read', true)
-      if (perm !== 'granted') skipped.push(s.name)
+      let perm: PermissionState
+      try {
+        perm = await ensurePermission(s.handle, 'read', true)
+      } catch (err) {
+        skipped.push(`${s.name} (${friendlyError(err)})`)
+        continue
+      }
+      // ¿Sigue accesible? (p. ej. un móvil desconectado o vuelto a conectar: la carpeta guardada ya no vale)
+      const unreadable = perm === 'granted' ? await checkReadable(s.handle) : null
+      if (perm !== 'granted') skipped.push(`${s.name} (sin permiso)`)
+      else if (unreadable) skipped.push(`${s.name}: no se puede abrir. Si es un móvil, comprueba que sigue conectado y desbloqueado; si aun así falla, quita esa carpeta y vuelve a añadirla`)
       else if (await isInside(disk.handle, s.handle)) skipped.push(`${s.name} (está dentro de la carpeta de backup)`)
       else sources.push({ ...s, perm })
     }
     set({ sources: get().sources.map((s) => sources.find((x) => x.key === s.key) ?? s) })
-    if (!force && sources.length === 0) {
-      set({ notice: get().sources.length ? `No se puede leer ninguna carpeta de fotos: ${skipped.join(', ')}.` : 'Añade al menos una carpeta de fotos.' })
+    if (!force && sources.length === 0 && get().pickedFiles.length === 0) {
+      set({
+        notice: get().sources.length
+          ? `No se puede leer ninguna carpeta de fotos: ${skipped.join(', ')}. Si es un móvil conectado por USB, prueba "Elegir fotos sueltas".`
+          : 'Añade al menos una carpeta de fotos o elige fotos sueltas.',
+      })
       return
     }
     if (disk.encrypted && isLocked(disk)) {
@@ -444,13 +487,22 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
         : async (onFound) => {
             const files: SourceFile[] = []
             const ignored: string[] = []
+            const unreadable: Array<{ relPath: string; reason: string }> = []
+            files.push(...useApp.getState().pickedFiles)
             for (const s of sources) {
-              const r = await walkSource(s.handle, disk.handle, ctl, onFound, { label: s.name, cacheKeyPrefix: s.key, baseCount: files.length })
-              files.push(...r.files)
-              ignored.push(...r.ignored)
+              try {
+                const r = await walkSource(s.handle, disk.handle, ctl, onFound, { label: s.name, cacheKeyPrefix: s.key, baseCount: files.length })
+                files.push(...r.files)
+                ignored.push(...r.ignored)
+                unreadable.push(...(r.unreadable ?? []))
+              } catch (err) {
+                if ((err as Error)?.name === 'CancelledError') throw err
+                // La carpeta entera dejó de estar accesible (móvil desconectado…): se sigue con las demás.
+                unreadable.push({ relPath: s.name, reason: `${friendlyError(err)}. No se ha copiado nada de esta carpeta.` })
+              }
             }
             lastScan = new Map(files.map((f) => [f.relPath, f]))
-            return { files, ignored }
+            return { files, ignored, unreadable }
           },
       hasher: workerHasher,
       readExif: workerExif,

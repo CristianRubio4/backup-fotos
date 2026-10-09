@@ -1,9 +1,9 @@
-import { AlertTriangle, Check, FolderPlus, FolderOpen, HardDrive, HardDriveDownload, Lock, MoreHorizontal, Plus, ShieldCheck, Smartphone } from 'lucide-react'
+import { AlertTriangle, Check, FolderPlus, FolderOpen, HardDrive, HardDriveDownload, Images, Lock, MoreHorizontal, Plus, ShieldCheck, Smartphone } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { statusLabel } from '../components/DiskBadge'
 import { Alert, Badge, Button, Card, PageHeader, StatusDot } from '../components/ui'
 import { UnlockDisk } from '../components/UnlockDisk'
-import { daysSince, formatDateTime } from '../core/format'
+import { daysSince, formatBytes, formatDateTime, plural } from '../core/format'
 import type { DiskRecord } from '../db'
 import { activeDisk, useApp, type SourceView } from '../state/app'
 import { isLocked, useKeys } from '../state/keys'
@@ -124,9 +124,10 @@ function Step({ done, children }: { done: boolean; children: ReactNode }) {
 }
 
 export function HomeScreen() {
-  const { sources, disks, diskStates, settings, running, addSource, addDisk, start, go } = useApp()
+  const { sources, disks, diskStates, settings, running, addSource, addDisk, start, go, pickedFiles, addPickedFiles, clearPickedFiles } = useApp()
   useKeys()
   const [showTips, setShowTips] = useState(false)
+  const [showPhone, setShowPhone] = useState(false)
 
   const disk = activeDisk()
   const connectedCount = disks.filter((d) => diskStates[d.key]?.state === 'connected').length
@@ -140,7 +141,7 @@ export function HomeScreen() {
   }
   if (disks.length === 1) warnings.push('Solo tienes un disco de backup. Lo ideal es rotar dos y guardar uno fuera de casa (regla 3-2-1).')
 
-  const sourcesReady = sources.length > 0 && sources.some((s) => s.perm !== 'denied')
+  const sourcesReady = pickedFiles.length > 0 || (sources.length > 0 && sources.some((s) => s.perm !== 'denied'))
   const locked = !!disk?.encrypted && isLocked(disk)
   const ready = !!disk && sourcesReady && !locked
 
@@ -170,9 +171,9 @@ export function HomeScreen() {
               <>
                 <h2 className="text-xl font-semibold tracking-tight">Prepara tu primer backup</h2>
                 <ol className="mt-3 space-y-2">
-                  <Step done={disks.length > 0}>Añade la carpeta de backup en tu disco externo</Step>
-                  <Step done={sources.length > 0}>Añade las carpetas con tus fotos</Step>
-                  <Step done={connectedCount > 0}>Conecta el disco</Step>
+                  <Step done={disks.length > 0}>Elige dónde guardar: un disco externo o una carpeta de este equipo</Step>
+                  <Step done={sources.length > 0 || pickedFiles.length > 0}>Añade las carpetas con tus fotos (o elige fotos sueltas)</Step>
+                  <Step done={connectedCount > 0}>Conecta el disco (si guardas en uno externo)</Step>
                   {locked && <Step done={false}>Desbloquea el disco cifrado con su contraseña</Step>}
                 </ol>
               </>
@@ -198,15 +199,16 @@ export function HomeScreen() {
 
       <div className="grid gap-5 md:grid-cols-2">
         <Card
-          title="Discos de backup"
+          title="Dónde guardar"
           icon={HardDrive}
-          description={connectedCount ? `${connectedCount} conectado${connectedCount > 1 ? 's' : ''}` : 'Ningún disco conectado'}
+          description={connectedCount ? `${connectedCount} ${connectedCount > 1 ? 'destinos disponibles' : 'destino disponible'}` : 'Disco externo, pendrive o carpeta de este equipo'}
           actions={<Button size="sm" icon={Plus} onClick={addDisk} disabled={running}>Añadir</Button>}
         >
           {disks.length === 0 ? (
-            <button onClick={addDisk} className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-line p-6 text-sm text-muted transition hover:border-accent hover:text-fg">
+            <button onClick={addDisk} className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-line p-6 text-center text-sm text-muted transition hover:border-accent hover:text-fg">
               <HardDrive size={24} aria-hidden />
-              Elige (o crea) una carpeta en tu disco externo
+              Elige (o crea) la carpeta del backup
+              <span className="text-xs">En un disco externo, un pendrive o en este mismo equipo o móvil</span>
             </button>
           ) : (
             <ul className="space-y-2">
@@ -226,17 +228,75 @@ export function HomeScreen() {
           description="Cámara, capturas, WhatsApp, Telegram…"
           actions={<Button size="sm" icon={FolderPlus} onClick={addSource} disabled={running}>Añadir</Button>}
         >
-          {sources.length === 0 ? (
-            <button onClick={addSource} className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-line p-6 text-sm text-muted transition hover:border-accent hover:text-fg">
+          {sources.length === 0 && pickedFiles.length === 0 ? (
+            <button onClick={addSource} className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-line p-6 text-center text-sm text-muted transition hover:border-accent hover:text-fg">
               <FolderPlus size={24} aria-hidden />
-              Elige la carpeta con tus fotos y vídeos
+              Elige una carpeta con fotos y vídeos
+              <span className="text-xs">Puede ser una carpeta concreta o un disco o móvil entero: la app busca las fotos en todas las subcarpetas</span>
             </button>
           ) : (
             <ul className="space-y-2">
               {sources.map((s) => (
                 <SourceRow key={s.key} s={s} />
               ))}
+              {pickedFiles.length > 0 && (
+                <li className="flex items-center gap-3 rounded-2xl border border-line p-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-2 text-muted">
+                    <Images size={18} aria-hidden />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">Fotos elegidas</div>
+                    <div className="text-xs text-muted">{plural(pickedFiles.length, 'archivo', 'archivos')} · {formatBytes(pickedFiles.reduce((a, f) => a + f.size, 0))} · solo para esta sesión</div>
+                  </div>
+                  <Button size="sm" variant="ghost" disabled={running} onClick={clearPickedFiles}>Quitar</Button>
+                </li>
+              )}
             </ul>
+          )}
+
+          {/* Alternativa al selector de carpetas: móvil por USB en Windows (MTP), cámaras… */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <label className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-xs font-medium hover:bg-surface-2 ${running ? 'pointer-events-none opacity-50' : ''}`}>
+              <Images size={14} aria-hidden /> Elegir fotos sueltas
+              <input
+                type="file"
+                multiple
+                accept="*/*"
+                className="sr-only"
+                onChange={(e) => {
+                  addPickedFiles(e.target.files)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            {!isAndroid && (
+              <button className="inline-flex items-center gap-1.5 text-xs font-medium text-accent-strong" onClick={() => setShowPhone(!showPhone)} aria-expanded={showPhone}>
+                <Smartphone size={14} aria-hidden /> ¿Fotos de un móvil conectado por USB?
+              </button>
+            )}
+          </div>
+          {showPhone && (
+            <div className="animate-rise mt-2 space-y-2 rounded-xl bg-surface-2 p-3 text-xs leading-relaxed">
+              <p>
+                Al conectar un móvil por cable, Windows lo muestra como "dispositivo portátil", no como un disco normal, y el navegador no siempre
+                puede recorrerlo como carpeta. Tienes tres opciones:
+              </p>
+              <ol className="list-decimal space-y-1 pl-4">
+                <li>
+                  <b>Añadir carpeta</b> y elegir el móvil (o su almacenamiento interno): la app busca las fotos en todas las subcarpetas. Si da error,
+                  prueba la siguiente opción.
+                </li>
+                <li>
+                  <b>Elegir fotos sueltas</b>: en la ventana ve a Este equipo → tu móvil → Almacenamiento interno → DCIM → Camera, pulsa Ctrl + A y
+                  Abrir. Repite con otras carpetas (WhatsApp, capturas…) si quieres.
+                </li>
+                <li>
+                  <b>Usar la app en el propio móvil</b> (Chrome en Android): elige DCIM como origen y guarda en un disco conectado por USB-OTG o en una
+                  carpeta del móvil.
+                </li>
+              </ol>
+              <p className="text-muted">En el móvil, desbloquéalo y elige "Transferencia de archivos" al conectarlo. En iPhone, usa "Elegir fotos sueltas" o la app Fotos de Windows.</p>
+            </div>
           )}
           {isAndroid && (
             <div className="mt-3">
