@@ -23,6 +23,7 @@ export const io = {
   hashHandle: (h: FileSystemFileHandle, onProgress: ProgressFn) => call(remote.hashHandle(h, Comlink.proxy(onProgress))),
   copy: (file: Blob, h: FileSystemFileHandle, onProgress: ProgressFn) => call(remote.copy(file, h, Comlink.proxy(onProgress))),
   readExif: (file: Blob) => remote.readExif(file),
+  inspect: (file: Blob, opts: Parameters<IoApi['inspect']>[1]) => remote.inspect(file, opts),
 }
 
 /** La pausa/cancelación del motor se reenvía al Worker (ver BackupStore). */

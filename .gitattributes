@@ -1,0 +1,4 @@
+* text=auto eol=lf
+# Archivos de prueba: se comparan byte a byte, Git no debe tocarlos.
+tests/fixtures/base/** binary
+tests/fixtures/set/** binary

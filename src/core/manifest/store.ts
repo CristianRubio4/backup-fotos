@@ -161,6 +161,15 @@ export class ManifestStore {
     this.pending.push(entry)
   }
 
+  /**
+   * Añade datos a una entrada existente (p. ej. enlazar una Live Photo con su
+   * vídeo). Se guarda en el disco con la siguiente compactación.
+   */
+  annotate(hash: string, patch: Pick<Partial<ManifestEntry>, 'pair'>) {
+    const e = this.byHash.get(hash)
+    if (e) Object.assign(e, patch)
+  }
+
   /** Guarda las entradas nuevas en un segmento del diario (rápido, para poder reanudar). */
   async flushJournal() {
     if (this.pending.length === 0) return

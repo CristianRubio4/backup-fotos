@@ -27,6 +27,10 @@ export interface ManifestEntry {
   status: EntryStatus
   note?: string
   copiedAt: string
+  /** Live Photo: hash de la otra mitad de la pareja (foto ↔ vídeo). */
+  pair?: string
+  /** Motion Photo de Android (JPEG con vídeo incrustado). */
+  motionPhoto?: boolean
 }
 
 export interface Manifest {
@@ -66,7 +70,9 @@ export function isValidEntry(e: unknown): e is ManifestEntry {
     isStr(o.deviceName) &&
     STATUSES.includes(o.status as EntryStatus) &&
     (o.note === undefined || isStr(o.note)) &&
-    isStr(o.copiedAt)
+    isStr(o.copiedAt) &&
+    (o.pair === undefined || isStr(o.pair)) &&
+    (o.motionPhoto === undefined || typeof o.motionPhoto === 'boolean')
   )
 }
 

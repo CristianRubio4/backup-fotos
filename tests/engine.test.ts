@@ -15,7 +15,7 @@ function run(target: MemoryTarget, files: SourceFile[], opts: { settings?: Parti
     diskName: 'USB',
     scan: async () => ({ files, ignored: [] }),
     hasher: testHasher,
-    readExif: async () => null,
+    readExif: async () => ({ date: null }),
     device: { id: 'dev-1', name: 'Portátil' },
     settings: { ...DEFAULT_SETTINGS, ...opts.settings },
     control: opts.control ?? new Controller(),

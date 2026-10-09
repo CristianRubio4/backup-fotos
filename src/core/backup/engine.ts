@@ -1,7 +1,10 @@
+import { classify, type DiscardCategory, type Features, type Verdict } from '../analysis/classify'
+import { findLivePhotos } from '../analysis/pairing'
 import { needsPreHash, planDedupe, type HashedFile } from '../dedupe'
 import { ensureDiskId } from '../disk'
 import type { EntryStatus, ManifestEntry } from '../manifest/schema'
 import { ManifestStore, type ManifestRecovery } from '../manifest/store'
+import { extOf, isVideo } from '../media'
 import { datedName, folderFor, pickDate, toLocalIso, withSuffix } from '../naming'
 import type { Device, Settings } from '../settings'
 import {
@@ -9,6 +12,8 @@ import {
   DiskDisconnectedError,
   DiskFullError,
   ManifestCorruptError,
+  type Analyzer,
+  type ExifInfo,
   type ExifReader,
   type Hasher,
   type RunControl,
@@ -23,8 +28,10 @@ export interface ReportItem {
   size: number
   /** Ruta en el disco (copiado) o del archivo ya existente (duplicado). */
   diskPath?: string
-  /** Motivo (descartes y duplicados) o mensaje de error. */
+  /** Motivo (descartes, duplicados, no verificados) o mensaje de error. */
   reason?: string
+  /** Para descartados: tipo de problema. */
+  category?: DiscardCategory
 }
 
 export type Outcome = 'completed' | 'cancelled' | 'disk-disconnected' | 'disk-full' | 'manifest-corrupt' | 'failed'
@@ -41,9 +48,16 @@ export interface BackupReport {
   /** Encontrados ya copiados en el disco aunque faltaban en el manifest (p. ej. tras una interrupción). */
   alreadyOnDisk: ReportItem[]
   duplicates: ReportItem[]
+  /** No copiados por los filtros. Siguen en el origen; se pueden copiar igualmente. */
   discarded: ReportItem[]
   unverified: ReportItem[]
+  /** Posibles versiones reducidas (fotos que quizá solo están completas en la nube). */
+  reduced: ReportItem[]
   errors: ReportItem[]
+  /** Parejas de Live Photo encontradas en la selección. */
+  livePhotos: number
+  /** Motion Photos (JPEG con vídeo incrustado) copiadas. */
+  motionPhotos: number
   bytesCopied: number
   manifest: ManifestRecovery | null
 }
@@ -61,6 +75,10 @@ export interface EngineInput {
   scan(onFound: (count: number) => void): Promise<ScanResult>
   hasher: Hasher
   readExif: ExifReader
+  /** Si falta, no se analiza nada (todo se copia). */
+  analyzer?: Analyzer
+  /** Rutas de origen que el usuario quiere copiar aunque los filtros las descarten. */
+  force?: Set<string>
   device: Device
   settings: Settings
   control: RunControl
@@ -80,8 +98,24 @@ function errorMessage(err: unknown) {
   return String(err)
 }
 
+/** IMG_1.HEIC → IMG_1.MOV (conservando la extensión original del vídeo). */
+function swapExt(path: string, fromName: string) {
+  const dot = path.lastIndexOf('.')
+  const ext = fromName.slice(fromName.lastIndexOf('.'))
+  return (dot > path.lastIndexOf('/') ? path.slice(0, dot) : path) + ext
+}
+
+interface Analysis {
+  exif: ExifInfo
+  verdict: Verdict
+  motionPhoto: boolean
+  forced: boolean
+}
+
 export async function runBackup(input: EngineInput): Promise<BackupReport> {
   const { target, hasher, control, settings, device } = input
+  const filters = settings.filters
+  const force = input.force ?? new Set<string>()
   const now = input.now ?? (() => new Date())
 
   const report: BackupReport = {
@@ -96,7 +130,10 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     duplicates: [],
     discarded: [],
     unverified: [],
+    reduced: [],
     errors: [],
+    livePhotos: 0,
+    motionPhotos: 0,
     bytesCopied: 0,
     manifest: null,
   }
@@ -140,6 +177,10 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
   const extraBytes = (n: number) => {
     progress.totalBytes += n
   }
+  const discardItem = (f: SourceFile, category: DiscardCategory, reason: string) => {
+    report.discarded.push(item(f, { category, reason }))
+    counters.discarded++
+  }
 
   let store: ManifestStore | null = null
   let diskOk = true
@@ -165,18 +206,21 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
 
     const files: SourceFile[] = []
     for (const f of scan.files) {
-      if (f.size === 0) {
-        report.discarded.push(item(f, { reason: 'Archivo vacío (0 bytes)' }))
-        counters.discarded++
-      } else files.push(f)
+      if (f.size === 0 && filters.corrupt && !force.has(f.relPath)) discardItem(f, 'corrupt', 'Archivo vacío (0 bytes)')
+      else files.push(f)
     }
+
+    // ---- Live Photos ----
+    const pairs = findLivePhotos(files)
+    report.livePhotos = pairs.length
+    const photoOfVideo = new Map(pairs.map((p) => [p.video, p.photo]))
 
     // ---- Hashes (solo de los que comparten tamaño con algo) ----
     const preHash = needsPreHash(files, (s) => manifest.hasSize(s))
     const preHashSet = new Set(preHash)
     const sum = (list: SourceFile[]) => list.reduce((a, f) => a + f.size, 0)
     const copyFactor = settings.verifyHash ? 2 : 1
-    // Estimación inicial: todo lo que no tiene hash se copiará; se ajusta tras deduplicar.
+    // Estimación inicial: todo lo que no tiene hash se copiará; se ajusta tras deduplicar y analizar.
     progress.totalBytes = sum(preHash) + sum(files) * copyFactor
 
     setPhase('hash', preHash.length)
@@ -202,35 +246,77 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       .filter((f) => !preHashSet.has(f) || hashes.has(f))
       .map((f) => ({ file: f, hash: hashes.get(f) ?? null }))
     const plan = planDedupe(hashed, (h) => manifest.findByHash(h))
+    /** Dónde está (o quedará) cada foto en el disco, para colocar su vídeo de Live Photo al lado. */
+    const placed = new Map<SourceFile, { diskPath: string; hash: string }>()
     for (const d of plan.onDisk) {
       report.duplicates.push(item(d.file, { diskPath: d.existing.diskPath, reason: 'Ya está en el disco' }))
+      placed.set(d.file, { diskPath: d.existing.diskPath, hash: d.existing.hash })
     }
     for (const d of plan.inSelection) {
       report.duplicates.push(item(d.file, { reason: `Repetido en la selección (igual que ${d.original.relPath})` }))
     }
     counters.duplicates = report.duplicates.length
-    progress.totalBytes = sum(preHash) + sum(plan.toCopy.map((h) => h.file)) * copyFactor
-    progress.doneBytes = Math.min(progress.doneBytes, progress.totalBytes)
 
-    // ---- Análisis (fecha EXIF) ----
+    // ---- Análisis: fecha EXIF y clasificación ----
     setPhase('analyze', plan.toCopy.length)
-    const exifDates = new Map<SourceFile, Date | null>()
-    for (const { file } of plan.toCopy) {
+    const analysis = new Map<SourceFile, Analysis>()
+    const toCopy: HashedFile[] = []
+    for (const hf of plan.toCopy) {
       await control.checkpoint()
-      progress.currentFile = file.relPath
-      let d: Date | null = null
+      const f = hf.file
+      progress.currentFile = f.relPath
+      const forced = force.has(f.relPath)
+      let exif: ExifInfo = { date: null }
+      let verdict: Verdict = { action: 'copy', status: 'ok' }
+      let features: Features | undefined
       try {
-        d = await input.readExif(await file.getFile())
-      } catch {
-        // Sin EXIF legible: se usará la fecha del archivo.
+        const blob = await f.getFile()
+        try {
+          exif = await input.readExif(blob)
+        } catch {
+          // Sin EXIF legible: se usará la fecha del archivo.
+        }
+        if (input.analyzer && !forced) {
+          try {
+            features = await input.analyzer.analyze(blob, {
+              name: f.name,
+              ext: extOf(f.name),
+              media: isVideo(f.name) ? 'video' : 'image',
+              livePhotoVideo: photoOfVideo.has(f),
+              exif,
+            })
+            verdict = classify(features, filters)
+          } catch (err) {
+            if (err instanceof CancelledError) throw err
+            // Si el análisis falla, se copia igualmente: nunca se descarta lo que no se ha comprobado.
+            verdict = { action: 'copy', status: 'unverified', note: `No se pudo analizar: ${errorMessage(err)}` }
+          }
+        }
+      } catch (err) {
+        if (err instanceof CancelledError) throw err
+        report.errors.push(item(f, { reason: `No se pudo leer: ${errorMessage(err)}` }))
+        counters.errors++
+        progress.phaseDone++
+        continue
       }
-      exifDates.set(file, d)
+      if (forced) verdict = { action: 'copy', status: 'unverified', note: 'Copiado a petición del usuario aunque el análisis lo había descartado' }
+
+      if (verdict.action === 'discard') {
+        discardItem(f, verdict.category, verdict.reason)
+      } else {
+        analysis.set(f, { exif, verdict, motionPhoto: !!features?.bytes.motionPhoto, forced })
+        toCopy.push(hf)
+      }
       progress.phaseDone++
       emit()
     }
+    // Las fotos antes que sus vídeos de Live Photo, para que el vídeo tome el nombre de la foto.
+    toCopy.sort((a, b) => Number(photoOfVideo.has(a.file)) - Number(photoOfVideo.has(b.file)))
+    progress.totalBytes = sum(preHash) + sum(toCopy.map((h) => h.file)) * copyFactor
+    progress.doneBytes = Math.min(progress.doneBytes, progress.totalBytes)
 
     // ---- Copia y verificación ----
-    setPhase('copy', plan.toCopy.length)
+    setPhase('copy', toCopy.length)
     const reserved = new Set<string>()
     let sinceSave = 0
     let lastSave = Date.now()
@@ -243,7 +329,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       }
     }
 
-    const register = (f: SourceFile, entry: Omit<ManifestEntry, 'originalName' | 'sourcePath' | 'size' | 'fileDate' | 'deviceId' | 'deviceName' | 'copiedAt'>) => {
+    type Fixed = 'originalName' | 'sourcePath' | 'size' | 'fileDate' | 'deviceId' | 'deviceName' | 'copiedAt'
+    const register = (f: SourceFile, entry: Omit<ManifestEntry, Fixed>) => {
       manifest.add({
         ...entry,
         size: f.size,
@@ -258,62 +345,89 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       sinceSave++
     }
 
-    for (const hf of plan.toCopy) {
+    /**
+     * ¿Se puede usar esta ruta? free: libre (o resto vacío de una copia
+     * interrumpida); same: ya contiene este mismo archivo; taken: otro archivo.
+     */
+    const tryPath = async (candidate: string, f: SourceFile, blob: Blob, known: { hash: string | null }) => {
+      if (reserved.has(candidate.toLowerCase()) || manifest.hasDiskPath(candidate)) return 'taken'
+      const st = await target.stat(candidate)
+      if (st === null || st.size === 0) return 'free'
+      if (st.size !== f.size) return 'taken'
+      if (known.hash === null) {
+        extraBytes(f.size)
+        known.hash = await hasher.hash(blob, onBytes, control)
+      }
+      extraBytes(f.size)
+      return (await target.hash(candidate, onBytes, control)) === known.hash ? 'same' : 'taken'
+    }
+
+    for (const hf of toCopy) {
       await control.checkpoint()
       const f = hf.file
+      const a = analysis.get(f)!
       progress.currentFile = f.relPath
       progress.phase = 'copy'
       try {
         const blob = await f.getFile()
-        const exif = exifDates.get(f) ?? null
-        const { date } = pickDate(exif, f.lastModified, now())
-        const dir = folderFor(date)
-        const base = datedName(f.name, date, settings.dateInName)
-        let hash = hf.hash
-
-        // Elegir ruta: libre, o un archivo idéntico que ya estaba (copia interrumpida).
+        const known = { hash: hf.hash }
         let path = ''
-        let alreadyThere = false
-        for (let n = 0; ; n++) {
-          const candidate = `${dir}/${withSuffix(base, n)}`
-          if (reserved.has(candidate.toLowerCase()) || manifest.hasDiskPath(candidate)) continue
-          const st = await target.stat(candidate)
-          // Un archivo de 0 bytes que no está en el manifest es un resto de una copia interrumpida.
-          if (st === null || st.size === 0) {
-            path = candidate
-            break
-          }
-          if (st.size === f.size) {
-            if (hash === null) {
-              extraBytes(f.size)
-              hash = await hasher.hash(blob, onBytes, control)
-            }
-            extraBytes(f.size)
-            if ((await target.hash(candidate, onBytes, control)) === hash) {
-              path = candidate
-              alreadyThere = true
-              break
-            }
+        let state: 'free' | 'same' | 'taken' = 'taken'
+
+        // Vídeo de Live Photo: mismo nombre que su foto (IMG_1234.HEIC → IMG_1234.MOV).
+        const photo = photoOfVideo.get(f)
+        const photoPlace = photo && placed.get(photo)
+        if (photoPlace) {
+          path = swapExt(photoPlace.diskPath, f.name)
+          state = await tryPath(path, f, blob, known)
+        }
+        if (state === 'taken') {
+          const { date } = pickDate(a.exif.date, f.lastModified, now())
+          const dir = folderFor(date)
+          const base = datedName(f.name, date, settings.dateInName)
+          for (let n = 0; state === 'taken'; n++) {
+            path = `${dir}/${withSuffix(base, n)}`
+            state = await tryPath(path, f, blob, known)
           }
         }
 
-        if (alreadyThere) {
+        const exifDate = a.exif.date ? toLocalIso(a.exif.date) : null
+        const extra = {
+          ...(photoPlace ? { pair: photoPlace.hash } : {}),
+          ...(a.motionPhoto ? { motionPhoto: true } : {}),
+        }
+
+        if (state === 'same') {
           // Ya se copió antes pero no llegó al manifest: se registra sin volver a copiar.
           progress.doneBytes += f.size * copyFactor
-          register(f, { hash: hash!, diskPath: path, exifDate: exif ? toLocalIso(exif) : null, status: 'verified', note: 'Encontrado ya copiado en el disco' })
+          register(f, { hash: known.hash!, diskPath: path, exifDate, status: 'verified', note: 'Encontrado ya copiado en el disco', ...extra })
           report.alreadyOnDisk.push(item(f, { diskPath: path }))
           counters.copied++
         } else {
-          const result = await copyAndVerify(f, blob, path, hash)
-          register(f, { hash: result.hash, diskPath: path, exifDate: exif ? toLocalIso(exif) : null, status: result.status, note: result.note })
+          const result = await copyAndVerify(f, blob, path, known.hash)
+          // El estado final combina la verificación de la copia y el análisis del contenido.
+          let status: EntryStatus = result.status
+          let note = result.note
+          if (status === 'verified' && a.verdict.action === 'copy' && a.verdict.status !== 'ok') {
+            status = a.verdict.status
+            note = a.verdict.note
+          }
+          register(f, { hash: result.hash, diskPath: path, exifDate, status, note, ...extra })
+          known.hash = result.hash
           report.copied.push(item(f, { diskPath: path }))
           report.bytesCopied += f.size
           counters.copied++
-          if (result.status === 'unverified') {
-            report.unverified.push(item(f, { diskPath: path, reason: result.note }))
+          if (status === 'unverified') {
+            report.unverified.push(item(f, { diskPath: path, reason: note }))
             counters.unverified++
+          } else if (status === 'reduced') {
+            report.reduced.push(item(f, { diskPath: path, reason: note }))
           }
         }
+        if (a.motionPhoto) report.motionPhotos++
+        placed.set(f, { diskPath: path, hash: known.hash! })
+        // La foto de la pareja apunta también a su vídeo.
+        if (photoPlace) manifest.annotate(photoPlace.hash, { pair: known.hash! })
         await saveIfDue()
       } catch (err) {
         if (err instanceof CancelledError) throw err

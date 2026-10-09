@@ -1,0 +1,1 @@
+Este archivo no es una foto: la app debe ignorarlo.

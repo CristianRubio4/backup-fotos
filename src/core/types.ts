@@ -1,3 +1,5 @@
+import type { Features } from './analysis/classify'
+
 // Tipos compartidos por el núcleo. El núcleo no conoce el navegador:
 // trabaja contra `Target` (el disco) y `SourceFile` (el origen), de modo que
 // los tests usan un sistema de archivos en memoria.
@@ -39,7 +41,23 @@ export interface Hasher {
   hash(file: Blob, onProgress: ProgressFn, control: RunControl): Promise<string>
 }
 
-export type ExifReader = (file: Blob) => Promise<Date | null>
+export interface ExifInfo {
+  /** Fecha de captura. */
+  date: Date | null
+  /** Dimensiones declaradas en el EXIF (para detectar versiones reducidas). */
+  width?: number
+  height?: number
+}
+
+export type ExifReader = (file: Blob) => Promise<ExifInfo>
+
+/** Mide un archivo (bytes, decodificación, vídeo). Lo implementa la plataforma. */
+export interface Analyzer {
+  analyze(
+    file: Blob,
+    info: { name: string; ext: string; media: 'image' | 'video'; livePhotoVideo: boolean; exif: ExifInfo },
+  ): Promise<Features>
+}
 
 export interface RunControl {
   readonly cancelled: boolean

@@ -25,6 +25,45 @@ export function HelpScreen() {
         <p>Nunca se borra ni se modifica nada en la carpeta de origen.</p>
       </Section>
 
+      <Section title="Qué se descarta (y qué nunca)">
+        <p>
+          Antes de copiar, cada archivo se analiza. Se descartan los <b>dañados</b> (cabecera no válida, contenido todo ceros, JPEG/PNG o vídeo
+          cortado, imágenes que no se pueden abrir), las imágenes <b>vacías</b> (negras, blancas o de un solo color) y las{' '}
+          <b>demasiado pequeñas</b>. Los filtros de fotos borrosas y vídeos cortos están desactivados por defecto. Todo se ajusta en Ajustes.
+        </p>
+        <p>
+          Lo descartado <b>nunca se borra</b> del origen y aparece en el informe con su miniatura y el botón <b>Copiar igualmente</b>.
+        </p>
+        <p>
+          Lo que no se puede comprobar no se descarta: se copia marcado como <b>no verificado</b>. Es el caso de formatos que el navegador no
+          abre (RAW, algunos vídeos HEVC) o de una foto HEIC que no se ha podido decodificar.
+        </p>
+      </Section>
+
+      <Section title="iPhone: HEIC y Live Photos">
+        <p>
+          Las fotos HEIC se comprueban con un decodificador incluido en la app (libheif), que se carga solo cuando aparece la primera HEIC.
+          Las <b>Live Photos</b> (foto + vídeo corto con el mismo nombre, p. ej. IMG_1234.HEIC e IMG_1234.MOV) se copian juntas, con el mismo
+          nombre y en la misma carpeta, y su vídeo nunca se descarta por corto.
+        </p>
+        <p>
+          Las <b>Motion Photos</b> de Android llevan el vídeo dentro del propio JPEG: se copian tal cual, con el vídeo incluido.
+        </p>
+      </Section>
+
+      <Section title="Fotos que solo están en la nube">
+        <p>
+          Con "Optimizar almacenamiento" (iCloud) o "Liberar espacio" (Google Fotos), el móvil puede guardar solo una versión reducida y dejar
+          el original en la nube. La app lo detecta cuando la resolución real es mucho menor que la que indica el EXIF, copia la foto marcada
+          como <b>posible versión reducida</b> y te avisa.
+        </p>
+        <ul className="list-disc pl-5">
+          <li>iPhone: Ajustes → [tu nombre] → iCloud → Fotos → "Descargar y conservar originales".</li>
+          <li>Google Fotos: abre la foto y usa "Descargar" para tener el original en el dispositivo.</li>
+        </ul>
+        <p>Después, vuelve a hacer el backup: el original se copiará como un archivo nuevo.</p>
+      </Section>
+
       <Section title="Fecha de los archivos">
         <p>
           Los navegadores no permiten conservar la fecha original de un archivo al copiarlo: en el disco aparecerá la fecha de la copia.

@@ -1,7 +1,10 @@
 import * as Comlink from 'comlink'
 import exifr from 'exifr'
+import type { Features } from '../core/analysis/classify'
+import { blobSource, byteFeatures, DECODABLE_IMAGES } from '../core/analysis/formats'
 import { hashStream } from '../core/hash'
-import { CancelledError, type ProgressFn, type RunControl } from '../core/types'
+import { CancelledError, type ExifInfo, type ProgressFn, type RunControl } from '../core/types'
+import { decodeHeif, decodeWithBrowser } from './image-analysis'
 
 // Worker de E/S: hashes, copia en streaming y lectura de EXIF, fuera del hilo
 // de la interfaz. La pausa y la cancelación llegan por mensajes y se
@@ -90,12 +93,37 @@ const api = {
     }
   },
 
-  /** Fecha de captura del EXIF (null si no hay). Solo lee el principio del archivo. */
-  async readExif(file: Blob): Promise<Date | null> {
+  /** Fecha de captura y dimensiones del EXIF. Solo lee el principio del archivo. */
+  async readExif(file: Blob): Promise<ExifInfo> {
     const head = await file.slice(0, 512 * 1024).arrayBuffer()
-    const data = await exifr.parse(head, { pick: ['DateTimeOriginal', 'CreateDate', 'DateTimeDigitized'] })
+    const data = await exifr.parse(head, {
+      pick: ['DateTimeOriginal', 'CreateDate', 'DateTimeDigitized', 'ExifImageWidth', 'ExifImageHeight', 'PixelXDimension', 'PixelYDimension'],
+    })
     const d = data?.DateTimeOriginal ?? data?.CreateDate ?? data?.DateTimeDigitized
-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null
+    const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : undefined)
+    return {
+      date: d instanceof Date && !Number.isNaN(d.getTime()) ? d : null,
+      width: num(data?.ExifImageWidth ?? data?.PixelXDimension),
+      height: num(data?.ExifImageHeight ?? data?.PixelYDimension),
+    }
+  },
+
+  /**
+   * Medidas de un archivo que se pueden tomar en el Worker: bytes
+   * (formato, truncado, estructura) y decodificación de imágenes.
+   */
+  async inspect(file: Blob, opts: { media: 'image' | 'video'; heifDecode: boolean; wantBlur: boolean }) {
+    const bytes = await byteFeatures(blobSource(file))
+    const out: Pick<Features, 'bytes' | 'decode' | 'heifUnavailable'> = { bytes }
+    if (opts.media !== 'image') return out
+    if (DECODABLE_IMAGES.includes(bytes.kind)) {
+      out.decode = await decodeWithBrowser(file, opts.wantBlur)
+    } else if (bytes.kind === 'heif' && opts.heifDecode) {
+      const d = await decodeHeif(file, opts.wantBlur)
+      if (d === 'unavailable') out.heifUnavailable = true
+      else out.decode = d
+    }
+    return out
   },
 }
 

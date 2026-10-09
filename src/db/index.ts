@@ -1,7 +1,7 @@
 import { openDB, type DBSchema } from 'idb'
 import type { BackupReport } from '../core/backup/engine'
 import { newId } from '../core/disk'
-import { DEFAULT_SETTINGS, type Device, type Settings } from '../core/settings'
+import { withDefaults, type Device, type Settings } from '../core/settings'
 
 export interface HistoryRecord {
   id?: number
@@ -46,7 +46,7 @@ export const db = {
   setDest: (h: FileSystemDirectoryHandle) => set('dest', h),
 
   async getSettings(): Promise<Settings> {
-    return { ...DEFAULT_SETTINGS, ...(await get<Partial<Settings>>('settings')) }
+    return withDefaults(await get<Partial<Settings>>('settings'))
   },
   setSettings: (s: Settings) => set('settings', s),
 

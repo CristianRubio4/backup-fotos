@@ -1,11 +1,14 @@
 import { create } from 'zustand'
 import { runBackup, type BackupReport } from '../core/backup/engine'
+import { mergeForced } from '../core/backup/report'
 import type { Progress } from '../core/backup/progress'
 import { Controller } from '../core/control'
 import { DISK_ID_FILE } from '../core/disk'
 import { DEFAULT_SETTINGS, type Device, type Settings } from '../core/settings'
 import { db, type HistoryRecord } from '../db'
 import { capabilities, ensurePermission } from '../platform/capabilities'
+import type { SourceFile } from '../core/types'
+import { createAnalyzer } from '../platform/analyzer'
 import { FsaTarget } from '../platform/fsa-target'
 import { io, workerExif, workerHasher } from '../platform/io'
 import { isInside, walkSource } from '../platform/walk'
@@ -34,7 +37,8 @@ interface AppState {
   chooseSource(): Promise<void>
   chooseDest(): Promise<void>
   grant(which: 'source' | 'dest'): Promise<void>
-  start(): Promise<void>
+  /** Hace el backup; con `forcePaths`, copia solo esos descartados ("Copiar igualmente"). */
+  start(forcePaths?: string[]): Promise<void>
   pause(): void
   resume(): void
   cancel(): void
@@ -126,9 +130,14 @@ export const useApp = create<AppState>((set, get) => ({
     else set({ destPerm: state, diskName: state === 'granted' ? await readDiskName(h) : get().diskName })
   },
 
-  async start() {
+  async start(forcePaths) {
     const { source, dest, running } = get()
     if (running || !source || !dest || !capabilities.fsAccess) return
+    const force = forcePaths?.map((p) => lastScan.get(p)).filter((f): f is SourceFile => !!f)
+    if (forcePaths && !force?.length) {
+      set({ notice: 'Esos archivos ya no están disponibles en esta sesión. Vuelve a hacer el backup y cópialos desde el nuevo informe.' })
+      return
+    }
 
     // Primero los permisos: requestPermission necesita el clic del usuario.
     const sp = await ensurePermission(source, 'read', true)
@@ -143,7 +152,7 @@ export const useApp = create<AppState>((set, get) => ({
       return
     }
 
-    const job = () => runJob(source, dest)
+    const job = () => runJob(source, dest, force)
     if (!capabilities.webLocks) return job()
     // Web Locks: un solo backup a la vez entre pestañas y ventanas.
     await navigator.locks.request('backup-fotos', { ifAvailable: true }, async (lock) => {
@@ -184,12 +193,26 @@ export const useApp = create<AppState>((set, get) => ({
   },
 }))
 
-async function runJob(source: FileSystemDirectoryHandle, dest: FileSystemDirectoryHandle) {
-  const { settings, device } = useApp.getState()
+/** Archivos del último escaneo, para "Copiar igualmente" y las miniaturas del informe. */
+let lastScan = new Map<string, SourceFile>()
+
+export function scannedFile(relPath: string) {
+  return lastScan.get(relPath)
+}
+
+/**
+ * Ejecuta un backup. Con `force`, copia solo esos archivos (descartados que
+ * el usuario quiere conservar) sin pasar por los filtros, y fusiona el
+ * resultado con el informe actual.
+ */
+async function runJob(source: FileSystemDirectoryHandle, dest: FileSystemDirectoryHandle, force?: SourceFile[]) {
+  const { settings, device, report: previous } = useApp.getState()
   const ctl = new Controller()
   controller = ctl
   await io.reset()
-  useApp.setState({ running: true, paused: false, progress: null, report: null, screen: 'progress' })
+  useApp.setState(
+    force ? { running: true, paused: false, progress: null } : { running: true, paused: false, progress: null, report: null, screen: 'progress' },
+  )
   window.addEventListener('beforeunload', onBeforeUnload)
 
   const target = new FsaTarget(dest)
@@ -198,9 +221,17 @@ async function runJob(source: FileSystemDirectoryHandle, dest: FileSystemDirecto
     report = await runBackup({
       target,
       diskName: dest.name,
-      scan: (onFound) => walkSource(source, dest, ctl, onFound),
+      scan: force
+        ? async () => ({ files: force, ignored: [] })
+        : async (onFound) => {
+            const result = await walkSource(source, dest, ctl, onFound)
+            lastScan = new Map(result.files.map((f) => [f.relPath, f]))
+            return result
+          },
       hasher: workerHasher,
       readExif: workerExif,
+      analyzer: createAnalyzer(settings.filters),
+      force: force && new Set(force.map((f) => f.relPath)),
       device,
       settings,
       control: ctl,
@@ -211,7 +242,7 @@ async function runJob(source: FileSystemDirectoryHandle, dest: FileSystemDirecto
       },
     })
   } catch (err) {
-    useApp.setState({ running: false, screen: 'home', notice: `Error inesperado: ${(err as Error).message}` })
+    useApp.setState({ running: false, screen: force ? 'report' : 'home', notice: `Error inesperado: ${(err as Error).message}` })
     return
   } finally {
     window.removeEventListener('beforeunload', onBeforeUnload)
@@ -234,5 +265,6 @@ async function runJob(source: FileSystemDirectoryHandle, dest: FileSystemDirecto
     errors: report.errors.length,
     bytesCopied: report.bytesCopied,
   })
-  useApp.setState({ running: false, paused: false, report, diskName, screen: 'report', history: await db.listHistory() })
+  const shown = force && previous ? mergeForced(previous, report) : report
+  useApp.setState({ running: false, paused: false, report: shown, diskName, screen: 'report', history: await db.listHistory() })
 }
