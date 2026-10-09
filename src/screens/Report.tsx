@@ -1,0 +1,115 @@
+import { Alert, Button, Card, Stat } from '../components/ui'
+import type { BackupReport, Outcome, ReportItem } from '../core/backup/engine'
+import { formatBytes, formatDuration } from '../core/format'
+import { useApp } from '../state/app'
+
+const OUTCOME: Record<Outcome, { tone: 'ok' | 'warn' | 'error'; text: string }> = {
+  completed: { tone: 'ok', text: 'Backup terminado.' },
+  cancelled: { tone: 'warn', text: 'Backup cancelado. Lo copiado hasta ahora está guardado y no se repetirá.' },
+  'disk-disconnected': {
+    tone: 'error',
+    text: 'El disco se desconectó durante el backup. Vuelve a conectarlo y pulsa "Hacer backup": continuará donde se quedó, sin duplicar nada.',
+  },
+  'disk-full': { tone: 'error', text: 'El disco se ha llenado. Libera espacio en el disco o usa otro, y vuelve a lanzar el backup.' },
+  'manifest-corrupt': {
+    tone: 'error',
+    text: 'El registro del disco (.backup-manifest.json) y su copia (.bak) están dañados, así que no se ha copiado nada para no duplicar fotos. Más adelante la app podrá reconstruirlo escaneando el disco (Herramientas → Reconstruir manifest).',
+  },
+  failed: { tone: 'error', text: 'El backup se detuvo por un error.' },
+}
+
+const LIST_LIMIT = 300
+
+function ItemList({ title, items, empty, showPath }: { title: string; items: ReportItem[]; empty?: string; showPath?: boolean }) {
+  if (items.length === 0 && !empty) return null
+  return (
+    <details className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+      <summary className="cursor-pointer text-sm font-medium">
+        {title} <span className="text-slate-500">({items.length})</span>
+      </summary>
+      {items.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-500">{empty}</p>
+      ) : (
+        <ul className="mt-2 max-h-80 space-y-1 overflow-auto text-xs">
+          {items.slice(0, LIST_LIMIT).map((it, i) => (
+            <li key={i} className="border-b border-slate-100 pb-1 last:border-0 dark:border-slate-800">
+              <span className="font-medium break-all">{it.sourcePath}</span>
+              <span className="text-slate-500"> · {formatBytes(it.size)}</span>
+              {showPath && it.diskPath && <div className="break-all text-slate-500">→ {it.diskPath}</div>}
+              {it.reason && <div className="text-slate-500">{it.reason}</div>}
+            </li>
+          ))}
+          {items.length > LIST_LIMIT && <li className="text-slate-500">…y {items.length - LIST_LIMIT} más</li>}
+        </ul>
+      )}
+    </details>
+  )
+}
+
+function ManifestNotice({ report }: { report: BackupReport }) {
+  const m = report.manifest
+  if (!m) return null
+  const msgs: string[] = []
+  if (m.source === 'bak') msgs.push('El manifest principal estaba dañado y se ha recuperado desde la copia .bak.')
+  if (m.source === 'tmp') msgs.push('Se ha recuperado el manifest de una escritura que no llegó a completarse.')
+  if (m.journalApplied) msgs.push(`Se han incorporado ${m.journalApplied} bloques de un backup anterior que se interrumpió.`)
+  if (m.journalCorrupt) msgs.push(`${m.journalCorrupt} bloques del diario estaban dañados; sus fotos se han localizado en el disco sin recopiarlas.`)
+  if (msgs.length === 0) return null
+  return (
+    <Alert tone="warn">
+      {msgs.map((t) => (
+        <p key={t}>{t}</p>
+      ))}
+    </Alert>
+  )
+}
+
+export function ReportScreen() {
+  const { report, go } = useApp()
+  if (!report) return <p className="text-slate-500">Todavía no hay ningún informe.</p>
+
+  const o = OUTCOME[report.outcome]
+  const secs = (new Date(report.finishedAt).getTime() - new Date(report.startedAt).getTime()) / 1000
+
+  return (
+    <>
+      <Alert tone={o.tone}>
+        <p className="font-medium">{o.text}</p>
+        {report.failure && <p className="mt-1 text-xs">{report.failure}</p>}
+      </Alert>
+      <ManifestNotice report={report} />
+
+      <Card title="Resumen">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <Stat label="Copiados" value={report.copied.length + report.alreadyOnDisk.length} tone="ok" />
+          <Stat label="Duplicados omitidos" value={report.duplicates.length} />
+          <Stat label="Descartados" value={report.discarded.length} tone={report.discarded.length ? 'warn' : undefined} />
+          <Stat label="No verificados" value={report.unverified.length} tone={report.unverified.length ? 'warn' : undefined} />
+          <Stat label="Errores" value={report.errors.length} tone={report.errors.length ? 'error' : undefined} />
+          <Stat label="Datos copiados" value={formatBytes(report.bytesCopied)} />
+        </div>
+        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          {report.scanned} fotos y vídeos analizados en {formatDuration(secs)}.
+          {report.ignored.count > 0 && ` Se han ignorado ${report.ignored.count} archivos que no son fotos ni vídeos.`}
+        </p>
+      </Card>
+
+      <div className="space-y-2">
+        <ItemList title="Errores" items={report.errors} />
+        <ItemList title="No verificados" items={report.unverified} showPath />
+        <ItemList title="Descartados (no se han copiado; siguen en el origen)" items={report.discarded} />
+        <ItemList title="Copiados" items={report.copied} showPath />
+        <ItemList title="Ya estaban en el disco (backup anterior interrumpido)" items={report.alreadyOnDisk} showPath />
+        <ItemList title="Duplicados omitidos" items={report.duplicates} showPath />
+        {report.ignored.count > 0 && (
+          <ItemList
+            title="Ignorados (no son fotos ni vídeos)"
+            items={report.ignored.sample.map((p) => ({ name: p, sourcePath: p, size: 0 }))}
+          />
+        )}
+      </div>
+
+      <Button onClick={() => go('home')}>Volver al inicio</Button>
+    </>
+  )
+}
