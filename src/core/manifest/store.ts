@@ -165,9 +165,18 @@ export class ManifestStore {
    * Añade datos a una entrada existente (p. ej. enlazar una Live Photo con su
    * vídeo). Se guarda en el disco con la siguiente compactación.
    */
-  annotate(hash: string, patch: Pick<Partial<ManifestEntry>, 'pair'>) {
+  annotate(hash: string, patch: Pick<Partial<ManifestEntry>, 'pair' | 'status' | 'note'>) {
     const e = this.byHash.get(hash)
     if (e) Object.assign(e, patch)
+  }
+
+  /** Quita una entrada (p. ej. un archivo liberado del origen que ya no existe en el disco). */
+  remove(hash: string) {
+    const e = this.byHash.get(hash)
+    if (!e) return
+    this.byHash.delete(hash)
+    this.diskPaths.delete(e.diskPath.toLowerCase())
+    this.pending = this.pending.filter((p) => p.hash !== hash)
   }
 
   /** Guarda las entradas nuevas en un segmento del diario (rápido, para poder reanudar). */

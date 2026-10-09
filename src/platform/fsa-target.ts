@@ -138,6 +138,17 @@ export class FsaTarget implements Target {
     return this.fileHandle(path, false)
   }
 
+  /**
+   * Copia un archivo de este disco a otra carpeta (restaurar), en streaming
+   * y descifrándolo si el disco está cifrado. Devuelve el SHA-256 del
+   * contenido restaurado.
+   */
+  async exportTo(path: string, dest: FsaTarget, destPath: string, onProgress: ProgressFn) {
+    const src = await this.readFile(path)
+    if (!src) throw new DOMException(`No existe ${path}`, 'NotFoundError')
+    return dest.copyIn(destPath, src, onProgress)
+  }
+
   async ping() {
     try {
       if ((await this.root.queryPermission({ mode: 'readwrite' })) !== 'granted') return false

@@ -27,6 +27,8 @@ export async function incorporateDiskFiles(opts: {
   onBytes?: ProgressFn
   /** Se llama con el total de bytes a releer, antes de empezar. */
   onPlanned?: (files: number, bytes: number) => void
+  /** Incluir cualquier archivo (discos cifrados: .bin), no solo fotos y vídeos. */
+  includeAll?: boolean
   now?: () => Date
 }): Promise<IncorporateResult> {
   const { target, store, control } = opts
@@ -34,7 +36,7 @@ export async function incorporateDiskFiles(opts: {
   const pending: DiskFile[] = []
   for await (const f of target.walkFiles()) {
     await control.checkpoint()
-    if (isMedia(f.path) && !store.hasDiskPath(f.path) && f.size > 0) pending.push(f)
+    if ((opts.includeAll || isMedia(f.path)) && !store.hasDiskPath(f.path) && f.size > 0) pending.push(f)
   }
   opts.onPlanned?.(pending.length, pending.reduce((a, f) => a + f.size, 0))
 

@@ -57,6 +57,37 @@ function loadHeif() {
   return heif
 }
 
+/** Miniatura JPEG de una HEIC (para explorar el backup), o null si no se puede decodificar. */
+export async function heicThumbnail(file: Blob, size: number): Promise<Blob | null> {
+  let lib: LibHeif
+  try {
+    lib = await loadHeif()
+  } catch {
+    heif = null
+    return null
+  }
+  let images: ReturnType<InstanceType<LibHeif['HeifDecoder']>['decode']> = []
+  try {
+    images = new lib.HeifDecoder().decode(new Uint8Array(await file.arrayBuffer()))
+    const img = images[0]
+    if (!img) return null
+    const width = img.get_width()
+    const height = img.get_height()
+    const data = new ImageData(width, height)
+    await new Promise<void>((resolve, reject) => img.display(data, (r) => (r ? resolve() : reject(new Error('no se pudo decodificar')))))
+    const full = new OffscreenCanvas(width, height)
+    full.getContext('2d')!.putImageData(data, 0, 0)
+    const k = Math.min(1, size / Math.max(width, height))
+    const thumb = new OffscreenCanvas(Math.round(width * k), Math.round(height * k))
+    thumb.getContext('2d')!.drawImage(full, 0, 0, thumb.width, thumb.height)
+    return await thumb.convertToBlob({ type: 'image/jpeg', quality: 0.8 })
+  } catch {
+    return null
+  } finally {
+    images.forEach((i) => i.free?.())
+  }
+}
+
 /** HEIC/HEIF: el navegador no las abre; se decodifican con libheif (WebAssembly). */
 export async function decodeHeif(file: Blob, wantBlur: boolean): Promise<Decode | 'unavailable'> {
   let lib: LibHeif

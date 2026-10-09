@@ -4,7 +4,7 @@ import type { Features } from '../core/analysis/classify'
 import { blobSource, byteFeatures, DECODABLE_IMAGES } from '../core/analysis/formats'
 import { hashStream } from '../core/hash'
 import { CancelledError, type ExifInfo, type ProgressFn, type RunControl } from '../core/types'
-import { decodeHeif, decodeWithBrowser } from './image-analysis'
+import { decodeHeif, decodeWithBrowser, heicThumbnail } from './image-analysis'
 
 // Worker de E/S: hashes, copia en streaming y lectura de EXIF, fuera del hilo
 // de la interfaz. La pausa y la cancelación llegan por mensajes y se
@@ -106,6 +106,10 @@ const api = {
       width: num(data?.ExifImageWidth ?? data?.PixelXDimension),
       height: num(data?.ExifImageHeight ?? data?.PixelYDimension),
     }
+  },
+
+  heicThumbnail(file: Blob, size: number) {
+    return heicThumbnail(file, size)
   },
 
   /**

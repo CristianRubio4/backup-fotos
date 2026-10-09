@@ -24,6 +24,7 @@ export const io = {
   copy: (file: Blob, h: FileSystemFileHandle, onProgress: ProgressFn) => call(remote.copy(file, h, Comlink.proxy(onProgress))),
   readExif: (file: Blob) => remote.readExif(file),
   inspect: (file: Blob, opts: Parameters<IoApi['inspect']>[1]) => remote.inspect(file, opts),
+  heicThumbnail: (file: Blob, size: number) => remote.heicThumbnail(file, size),
 }
 
 /** La pausa/cancelación del motor se reenvía al Worker (ver BackupStore). */

@@ -4,6 +4,7 @@ import { useApp } from '../state/app'
 export function statusLabel(s: DiskStatus | undefined, name: string): [dot: string, text: string] {
   if (s?.state === 'connected') return ['bg-emerald-500', `Disco conectado: ${s.name}`]
   if (s?.state === 'needs-permission') return ['bg-amber-500', `${name}: hay que permitir el acceso`]
+  if (!s) return ['bg-slate-300', `${name}: comprobando…`]
   return ['bg-slate-400', `${name}: no conectado`]
 }
 

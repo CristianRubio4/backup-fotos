@@ -1,16 +1,20 @@
 import { useEffect, type ButtonHTMLAttributes } from 'react'
 import { DiskBadge } from '../components/DiskBadge'
 import { Alert } from '../components/ui'
+import { ExploreScreen } from '../screens/Explore'
 import { HelpScreen } from '../screens/Help'
 import { HistoryScreen } from '../screens/History'
 import { HomeScreen } from '../screens/Home'
 import { ProgressScreen } from '../screens/Progress'
 import { ReportScreen } from '../screens/Report'
 import { SettingsScreen } from '../screens/Settings'
+import { ToolsScreen } from '../screens/Tools'
 import { useApp, type Screen } from '../state/app'
 
 const NAV: Array<{ id: Screen; label: string }> = [
   { id: 'home', label: 'Inicio' },
+  { id: 'explore', label: 'Explorar' },
+  { id: 'tools', label: 'Herramientas' },
   { id: 'history', label: 'Historial' },
   { id: 'settings', label: 'Ajustes' },
   { id: 'help', label: 'Ayuda' },
@@ -71,6 +75,10 @@ export function App() {
           <ProgressScreen />
         ) : screen === 'report' ? (
           <ReportScreen />
+        ) : screen === 'explore' ? (
+          <ExploreScreen />
+        ) : screen === 'tools' ? (
+          <ToolsScreen />
         ) : screen === 'history' ? (
           <HistoryScreen />
         ) : screen === 'settings' ? (

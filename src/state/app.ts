@@ -391,7 +391,8 @@ export async function saveDiskIndex(disk: DiskRecord) {
  * el usuario quiere conservar) sin pasar por los filtros, y fusiona el
  * resultado con el informe actual.
  */
-async function runJob(disk: DiskRecord, sources: SourceView[], force?: SourceFile[]) {
+async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: SourceFile[]) {
+  let disk = initialDisk
   const { settings, device, report: previous } = useApp.getState()
   const ctl = new Controller()
   controller = ctl
@@ -472,6 +473,11 @@ async function runJob(disk: DiskRecord, sources: SourceView[], force?: SourceFil
     errors: report.errors.length + report.fat32.length,
     bytesCopied: report.bytesCopied,
   })
+  // Un disco migrado de la versión anterior recibe aquí su identificador (lo crea el motor en el primer backup).
+  if (report.diskId && disk.diskId !== report.diskId) {
+    await useApp.getState().updateDisk(disk.key, { diskId: report.diskId })
+    disk = { ...disk, diskId: report.diskId }
+  }
   if (report.outcome === 'completed' && !force) {
     await useApp.getState().updateDisk(disk.key, { lastBackupAt: report.finishedAt, lastBackupFiles: report.copied.length + report.alreadyOnDisk.length })
   }
