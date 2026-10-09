@@ -4,7 +4,7 @@ import { formatBytes, formatDuration } from '../core/format'
 import { useApp } from '../state/app'
 
 export function ProgressScreen() {
-  const { progress: p, paused, running, pause, resume, cancel } = useApp()
+  const { progress: p, paused, running, pause, resume, cancel, waitReason, batteryPaused, battery, wake, diskName, grant } = useApp()
 
   if (!running) return <p className="text-slate-500">No hay ningún backup en curso.</p>
   if (!p) return <p className="text-slate-500">Preparando…</p>
@@ -14,7 +14,41 @@ export function ProgressScreen() {
 
   return (
     <>
-      <Alert tone="info">Mantén esta pestaña abierta y el disco conectado hasta que termine.</Alert>
+      {p.waitingDisk ? (
+        <Alert tone="error">
+          {waitReason === 'needs-permission' ? (
+            <>
+              <p className="font-medium">El disco ha vuelto, pero hay que permitir de nuevo el acceso.</p>
+              <Button variant="primary" className="mt-2" onClick={() => grant('dest')}>
+                Permitir acceso al disco
+              </Button>
+            </>
+          ) : waitReason === 'other-disk' ? (
+            <p className="font-medium">
+              Ese no es el disco de este backup. Conecta el disco <b>{diskName}</b>.
+            </p>
+          ) : (
+            <>
+              <p className="font-medium">El disco se ha desconectado. El backup está en pausa.</p>
+              <p className="mt-1">
+                Vuelve a conectar <b>{diskName}</b> y el backup continuará solo, sin repetir nada. Si Windows le asigna otra letra, cancela y vuelve
+                a elegir la carpeta de backup: lo ya copiado no se repetirá.
+              </p>
+            </>
+          )}
+        </Alert>
+      ) : batteryPaused ? (
+        <Alert tone="warn">
+          <p className="font-medium">Pausado: la batería ha bajado del 10 % ({battery ? Math.round(battery.level * 100) : '?'} %).</p>
+          <p className="mt-1">Conecta el cargador y pulsa Reanudar. Con el disco conectado por OTG el móvil normalmente no se carga, salvo con un hub USB con alimentación.</p>
+        </Alert>
+      ) : (
+        <Alert tone="info">
+          Mantén esta pestaña abierta y el disco conectado hasta que termine.
+          {wake === 'on' && ' La pantalla se mantendrá encendida.'}
+          {(wake === 'unsupported' || wake === 'failed') && ' Este navegador no puede mantener la pantalla encendida: evita que se bloquee.'}
+        </Alert>
+      )}
 
       <Card>
         <ol className="mb-4 flex flex-wrap gap-x-3 gap-y-1 text-xs">
@@ -44,7 +78,7 @@ export function ProgressScreen() {
 
         <div className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
           <span>
-            {paused ? '⏸ En pausa' : PHASES[current]?.label}
+            {p.waitingDisk ? '⏸ Esperando al disco' : paused ? '⏸ En pausa' : PHASES[current]?.label}
             {p.phase === 'scan' ? ` · ${p.phaseDone} encontrados` : p.phaseTotal > 0 ? ` · ${Math.min(p.phaseDone + 1, p.phaseTotal)} de ${p.phaseTotal} archivos` : ''}
           </span>
           <span className="sm:text-right">

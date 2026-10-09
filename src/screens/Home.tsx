@@ -1,3 +1,4 @@
+import { DiskBadge } from '../components/DiskBadge'
 import { Alert, Button, Card } from '../components/ui'
 import { daysSince, formatDateTime } from '../core/format'
 import { capabilities } from '../platform/capabilities'
@@ -16,7 +17,7 @@ function PermissionLine({ perm, onGrant, label }: { perm: PermissionState | null
 }
 
 export function HomeScreen() {
-  const { source, sourcePerm, dest, destPerm, diskName, history, running, chooseSource, chooseDest, grant, start, go } = useApp()
+  const { source, sourcePerm, dest, destPerm, diskName, diskStatus, history, running, chooseSource, chooseDest, grant, start, go } = useApp()
 
   if (!capabilities.fsAccess) {
     return (
@@ -31,19 +32,32 @@ export function HomeScreen() {
   }
 
   const last = history.find((h) => h.diskName === diskName && h.outcome === 'completed')
-  const ready = !!source && !!dest && sourcePerm !== 'denied' && destPerm !== 'denied'
+  const diskUsable = diskStatus.state === 'connected' || diskStatus.state === 'needs-permission'
+  const ready = !!source && !!dest && sourcePerm !== 'denied' && destPerm !== 'denied' && diskUsable
 
   return (
     <>
       <Card title="Disco de destino" actions={dest && <Button variant="ghost" onClick={chooseDest} disabled={running}>Cambiar</Button>}>
         {dest ? (
           <div>
-            <p className="text-lg font-medium">💽 {diskName ?? dest.name}</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Carpeta de backup: {dest.name}</p>
+            <DiskBadge large />
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              💽 {diskName ?? dest.name} · carpeta de backup: {dest.name}
+            </p>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               {last ? `Último backup: ${formatDateTime(last.finishedAt)} (hace ${daysSince(last.finishedAt)} días)` : 'Aún no hay backups en este disco desde esta app.'}
             </p>
-            <PermissionLine perm={destPerm} onGrant={() => grant('dest')} label="Permitir acceso al disco" />
+            {diskStatus.state === 'disconnected' && (
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Conecta el disco <b>{diskName ?? dest.name}</b>. Si lo has conectado y no aparece (por ejemplo, porque Windows le ha dado otra letra),
+                pulsa "Cambiar" y vuelve a elegir la carpeta de backup.
+              </p>
+            )}
+            {diskStatus.state === 'needs-permission' && (
+              <Button variant="primary" onClick={() => grant('dest')} className="mt-2">
+                Permitir acceso al disco
+              </Button>
+            )}
           </div>
         ) : (
           <div className="space-y-2">

@@ -6,12 +6,17 @@ import { Controller } from '../core/control'
 import { DISK_ID_FILE } from '../core/disk'
 import { DEFAULT_SETTINGS, type Device, type Settings } from '../core/settings'
 import { db, type HistoryRecord } from '../db'
-import { capabilities, ensurePermission } from '../platform/capabilities'
-import type { SourceFile } from '../core/types'
+import { CancelledError, type SourceFile } from '../core/types'
 import { createAnalyzer } from '../platform/analyzer'
+import { capabilities, ensurePermission } from '../platform/capabilities'
+import { checkDisk, DISK_POLL_MS, type DiskStatus } from '../platform/disk-monitor'
 import { FsaTarget } from '../platform/fsa-target'
 import { io, workerExif, workerHasher } from '../platform/io'
+import { BATTERY_PAUSE, BATTERY_WARN, keepScreenOn, readBattery, watchBattery, type BatteryInfo, type WakeState } from '../platform/power'
 import { isInside, walkSource } from '../platform/walk'
+
+/** Por qué está esperando un backup interrumpido por el disco. */
+export type WaitReason = 'disconnected' | 'needs-permission' | 'other-disk'
 
 export type Screen = 'home' | 'progress' | 'report' | 'history' | 'settings' | 'help'
 
@@ -31,6 +36,13 @@ interface AppState {
   progress: Progress | null
   report: BackupReport | null
   notice: string | null
+  /** Estado del disco, comprobado cada 3 s. */
+  diskStatus: DiskStatus
+  waitReason: WaitReason | null
+  wake: WakeState
+  battery: BatteryInfo | null
+  /** Pausado automáticamente por batería baja. */
+  batteryPaused: boolean
 
   init(): Promise<void>
   go(screen: Screen): void
@@ -84,6 +96,11 @@ export const useApp = create<AppState>((set, get) => ({
   progress: null,
   report: null,
   notice: null,
+  diskStatus: { state: 'none' },
+  waitReason: null,
+  wake: 'off',
+  battery: null,
+  batteryPaused: false,
 
   async init() {
     const [source, dest, settings, device, history] = await Promise.all([
@@ -97,6 +114,8 @@ export const useApp = create<AppState>((set, get) => ({
     const destPerm = dest ? await dest.queryPermission({ mode: 'readwrite' }) : null
     const diskName = dest && destPerm === 'granted' ? await readDiskName(dest) : (dest?.name ?? null)
     set({ ready: true, source: source ?? null, dest: dest ?? null, sourcePerm, destPerm, diskName, settings, device, history })
+    startDiskPolling()
+    void readBattery().then((battery) => set({ battery }))
   },
 
   go: (screen) => set({ screen }),
@@ -117,6 +136,7 @@ export const useApp = create<AppState>((set, get) => ({
       const h = await window.showDirectoryPicker({ id: 'backup-destino', mode: 'readwrite' })
       await db.setDest(h)
       set({ dest: h, destPerm: 'granted', diskName: await readDiskName(h) })
+      void refreshDisk()
     } catch (err) {
       if (!isAbort(err)) set({ notice: `No se pudo elegir la carpeta: ${(err as Error).message}` })
     }
@@ -127,7 +147,10 @@ export const useApp = create<AppState>((set, get) => ({
     if (!h) return
     const state = await ensurePermission(h, which === 'source' ? 'read' : 'readwrite', true)
     if (which === 'source') set({ sourcePerm: state })
-    else set({ destPerm: state, diskName: state === 'granted' ? await readDiskName(h) : get().diskName })
+    else {
+      set({ destPerm: state, diskName: state === 'granted' ? await readDiskName(h) : get().diskName })
+      void refreshDisk()
+    }
   },
 
   async start(forcePaths) {
@@ -151,6 +174,20 @@ export const useApp = create<AppState>((set, get) => ({
       set({ notice: 'La carpeta de origen está dentro de la carpeta de backup. Elige otra carpeta de origen.' })
       return
     }
+    const disk = await refreshDisk()
+    if (disk.state !== 'connected') {
+      set({ notice: 'El disco de destino no está conectado. Conéctalo y vuelve a intentarlo.' })
+      return
+    }
+    // Batería: con el disco conectado por OTG el móvil normalmente no se carga.
+    const battery = await readBattery()
+    if (!force && battery && !battery.charging && battery.level < BATTERY_WARN) {
+      const ok = confirm(
+        `La batería está al ${Math.round(battery.level * 100)} %. El backup puede tardar y se pausará solo si baja del ${BATTERY_PAUSE * 100} %.\n\n` +
+          'Si el disco está conectado al móvil por USB (OTG), el móvil normalmente no se carga a la vez, salvo con un hub USB con alimentación.\n\n¿Empezar igualmente?',
+      )
+      if (!ok) return
+    }
 
     const job = () => runJob(source, dest, force)
     if (!capabilities.webLocks) return job()
@@ -173,7 +210,7 @@ export const useApp = create<AppState>((set, get) => ({
   resume() {
     controller?.resume()
     void io.setPaused(false)
-    set({ paused: false })
+    set({ paused: false, batteryPaused: false })
   },
 
   cancel() {
@@ -192,6 +229,52 @@ export const useApp = create<AppState>((set, get) => ({
     set({ device: d })
   },
 }))
+
+let polling: ReturnType<typeof setInterval> | null = null
+let checking = false
+
+/** Comprueba ahora si el disco de destino está accesible. */
+async function refreshDisk(): Promise<DiskStatus> {
+  const status = await checkDisk(useApp.getState().dest)
+  useApp.setState({ diskStatus: status })
+  return status
+}
+
+/** Mientras la app está abierta, comprueba cada 3 s qué disco está conectado. */
+function startDiskPolling() {
+  if (polling) return
+  const tick = async () => {
+    if (checking) return
+    checking = true
+    try {
+      await refreshDisk()
+    } finally {
+      checking = false
+    }
+  }
+  void tick()
+  polling = setInterval(tick, DISK_POLL_MS)
+}
+
+/**
+ * El motor llama aquí cuando el disco desaparece a mitad del backup. Se
+ * resuelve cuando vuelve a estar accesible el MISMO disco (mismo
+ * .backup-disk-id). Si hace falta reconfirmar el permiso, la pantalla de
+ * progreso muestra el botón (requestPermission necesita un clic).
+ */
+async function waitForDisk(dest: FileSystemDirectoryHandle, diskId: string, ctl: Controller) {
+  for (;;) {
+    if (ctl.cancelled) throw new CancelledError()
+    const s = await checkDisk(dest)
+    useApp.setState({ diskStatus: s })
+    if (s.state === 'connected' && s.id === diskId) {
+      useApp.setState({ waitReason: null })
+      return
+    }
+    useApp.setState({ waitReason: s.state === 'connected' ? 'other-disk' : s.state === 'needs-permission' ? 'needs-permission' : 'disconnected' })
+    await new Promise((r) => setTimeout(r, 2000))
+  }
+}
 
 /** Archivos del último escaneo, para "Copiar igualmente" y las miniaturas del informe. */
 let lastScan = new Map<string, SourceFile>()
@@ -214,6 +297,17 @@ async function runJob(source: FileSystemDirectoryHandle, dest: FileSystemDirecto
     force ? { running: true, paused: false, progress: null } : { running: true, paused: false, progress: null, report: null, screen: 'progress' },
   )
   window.addEventListener('beforeunload', onBeforeUnload)
+  // Pantalla encendida mientras dure el backup.
+  keepScreenOn(true, (wake) => useApp.setState({ wake }))
+  // Pausa automática si la batería baja del 10 % sin cargar.
+  const stopBattery = await watchBattery((battery) => {
+    useApp.setState({ battery })
+    const s = useApp.getState()
+    if (!battery.charging && battery.level < BATTERY_PAUSE && s.running && !s.paused) {
+      s.pause()
+      useApp.setState({ batteryPaused: true })
+    }
+  })
 
   const target = new FsaTarget(dest)
   let report: BackupReport
@@ -232,6 +326,7 @@ async function runJob(source: FileSystemDirectoryHandle, dest: FileSystemDirecto
       readExif: workerExif,
       analyzer: createAnalyzer(settings.filters),
       force: force && new Set(force.map((f) => f.relPath)),
+      waitForDisk: (diskId) => waitForDisk(dest, diskId, ctl),
       device,
       settings,
       control: ctl,
@@ -248,6 +343,9 @@ async function runJob(source: FileSystemDirectoryHandle, dest: FileSystemDirecto
     window.removeEventListener('beforeunload', onBeforeUnload)
     document.title = BASE_TITLE
     controller = null
+    keepScreenOn(false)
+    stopBattery()
+    useApp.setState({ waitReason: null, batteryPaused: false })
   }
 
   const diskName = await readDiskName(dest)
@@ -262,7 +360,7 @@ async function runJob(source: FileSystemDirectoryHandle, dest: FileSystemDirecto
     duplicates: report.duplicates.length,
     discarded: report.discarded.length,
     unverified: report.unverified.length,
-    errors: report.errors.length,
+    errors: report.errors.length + report.fat32.length,
     bytesCopied: report.bytesCopied,
   })
   const shown = force && previous ? mergeForced(previous, report) : report

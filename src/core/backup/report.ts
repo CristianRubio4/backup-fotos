@@ -16,6 +16,7 @@ export function mergeForced(prev: BackupReport, forced: BackupReport): BackupRep
     unverified: [...prev.unverified, ...forced.unverified],
     reduced: [...prev.reduced, ...forced.reduced],
     errors: [...prev.errors, ...forced.errors],
+    fat32: [...prev.fat32, ...forced.fat32],
     bytesCopied: prev.bytesCopied + forced.bytesCopied,
     finishedAt: forced.finishedAt,
   }

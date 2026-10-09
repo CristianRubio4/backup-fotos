@@ -29,6 +29,8 @@ export interface Progress {
   counters: Counters
   bytesPerSec: number
   etaSec: number | null
+  /** El disco se ha desconectado y el backup espera a que vuelva. */
+  waitingDisk: boolean
 }
 
 /** Velocidad media de los últimos `windowMs` milisegundos. */

@@ -144,7 +144,7 @@ export function ReportScreen() {
           <Stat label="Duplicados omitidos" value={report.duplicates.length} />
           <Stat label="Descartados" value={report.discarded.length} tone={report.discarded.length ? 'warn' : undefined} />
           <Stat label="No verificados" value={report.unverified.length} tone={report.unverified.length ? 'warn' : undefined} />
-          <Stat label="Errores" value={report.errors.length} tone={report.errors.length ? 'error' : undefined} />
+          <Stat label="Errores" value={report.errors.length + report.fat32.length} tone={report.errors.length + report.fat32.length ? 'error' : undefined} />
           <Stat label="Datos copiados" value={formatBytes(report.bytesCopied)} />
         </div>
         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
@@ -165,10 +165,29 @@ export function ReportScreen() {
         </Alert>
       )}
 
+      {report.fat32.length > 0 && (
+        <Alert tone="error">
+          <p className="font-medium">
+            {report.fat32.length === 1 ? 'Un archivo de más de 4 GB no se ha podido copiar' : `${report.fat32.length} archivos de más de 4 GB no se han podido copiar`}
+            : el disco parece estar formateado en FAT32.
+          </p>
+          <p className="mt-1">
+            FAT32 no admite archivos de 4 GB o más (vídeos largos). El resto del backup se ha hecho con normalidad y esos archivos siguen en el
+            origen. Para copiarlos, formatea el disco en <b>exFAT</b> (funciona en Windows y macOS). <b>Formatear borra el disco</b>: copia antes su
+            contenido a otro sitio.
+          </p>
+          <ul className="mt-1 list-disc pl-5">
+            <li>Windows: Explorador → clic derecho en el disco → Formatear → Sistema de archivos: exFAT → Iniciar.</li>
+            <li>macOS: Utilidad de Discos → selecciona el disco → Borrar → Formato: ExFAT → Borrar.</li>
+          </ul>
+        </Alert>
+      )}
+
       <Discarded items={report.discarded} />
 
       <div className="space-y-2">
         <ItemList title="Errores" items={report.errors} open />
+        <ItemList title="No copiados por el límite de 4 GB de FAT32" items={report.fat32} open />
         <ItemList title="Posibles versiones reducidas" items={report.reduced} showPath />
         <ItemList title="No verificados (copiados, pero no se ha podido comprobar su contenido)" items={report.unverified} showPath />
         <ItemList title="Copiados" items={report.copied} showPath />

@@ -81,8 +81,27 @@ export function HelpScreen() {
 
       <Section title="Si se corta el backup">
         <p>
-          Si se cierra la pestaña, se desconecta el disco o cancelas, vuelve a pulsar <b>Hacer backup</b>: continuará donde se quedó sin
-          duplicar nada. Un archivo a medio copiar nunca queda en el disco: solo aparece cuando está completo.
+          Si el disco se desconecta durante el backup, la app se pone en pausa y <b>continúa sola</b> en cuanto vuelves a conectar el mismo
+          disco (lo reconoce por el archivo <code>.backup-disk-id</code>). Si conectas otro disco, te avisa y sigue esperando.
+        </p>
+        <p>
+          Si se cierra la pestaña o cancelas, vuelve a pulsar <b>Hacer backup</b>: continuará donde se quedó sin duplicar nada. Un archivo a
+          medio copiar nunca queda en el disco: solo aparece cuando está completo.
+        </p>
+        <p>
+          En Windows, si al volver a enchufar el disco recibe otra letra (p. ej. E: en vez de D:), el navegador no lo encuentra: elige otra vez
+          la carpeta de backup en Inicio.
+        </p>
+      </Section>
+
+      <Section title="Pantalla y batería">
+        <p>
+          Durante el backup la app mantiene la pantalla encendida (si el navegador lo permite). Mantén la pestaña abierta y en primer plano.
+        </p>
+        <p>
+          En móviles y portátiles, si la batería está por debajo del 20 % la app avisa antes de empezar, y si baja del 10 % durante el backup lo
+          pone en pausa. Con el disco conectado al móvil por USB (OTG) el móvil normalmente <b>no se carga</b>; para cargar a la vez necesitas
+          un hub USB con alimentación.
         </p>
       </Section>
 

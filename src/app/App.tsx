@@ -1,4 +1,5 @@
 import { useEffect, type ButtonHTMLAttributes } from 'react'
+import { DiskBadge } from '../components/DiskBadge'
 import { Alert } from '../components/ui'
 import { HelpScreen } from '../screens/Help'
 import { HistoryScreen } from '../screens/History'
@@ -46,6 +47,12 @@ export function App() {
           ))}
         </nav>
       </header>
+
+      {screen !== 'home' && (
+        <div className="-mt-2 mb-3">
+          <DiskBadge />
+        </div>
+      )}
 
       {notice && (
         <div className="mb-4">

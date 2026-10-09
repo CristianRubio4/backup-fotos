@@ -54,6 +54,8 @@ export interface BackupReport {
   /** Posibles versiones reducidas (fotos que quizá solo están completas en la nube). */
   reduced: ReportItem[]
   errors: ReportItem[]
+  /** Archivos de más de 4 GB que no se han podido copiar porque el disco es FAT32. */
+  fat32: ReportItem[]
   /** Parejas de Live Photo encontradas en la selección. */
   livePhotos: number
   /** Motion Photos (JPEG con vídeo incrustado) copiadas. */
@@ -83,8 +85,21 @@ export interface EngineInput {
   settings: Settings
   control: RunControl
   onProgress(p: Progress): void
+  /**
+   * Si el disco se desconecta durante la copia, el motor llama a esta función
+   * y espera a que se resuelva (cuando vuelve el disco con este id) para
+   * continuar. Si no se indica, el backup termina con 'disk-disconnected'.
+   */
+  waitForDisk?: (diskId: string) => Promise<void>
+  /** Tamaño máximo de archivo en FAT32 (configurable solo para los tests). */
+  fat32Limit?: number
   now?: () => Date
 }
+
+/** FAT32 admite archivos de hasta 4 GiB − 1 byte. */
+export const FAT32_MAX_FILE = 4 * 1024 ** 3 - 1
+const FAT32_REASON =
+  'No se ha podido copiar: ocupa más de 4 GB y el disco parece estar formateado en FAT32, que no admite archivos tan grandes. Formatea el disco en exFAT (ver Ayuda)'
 
 const SAVE_INTERVAL_MS = 30_000
 const EMIT_INTERVAL_MS = 150
@@ -116,6 +131,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
   const { target, hasher, control, settings, device } = input
   const filters = settings.filters
   const force = input.force ?? new Set<string>()
+  const fat32Limit = input.fat32Limit ?? FAT32_MAX_FILE
   const now = input.now ?? (() => new Date())
 
   const report: BackupReport = {
@@ -132,6 +148,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     unverified: [],
     reduced: [],
     errors: [],
+    fat32: [],
     livePhotos: 0,
     motionPhotos: 0,
     bytesCopied: 0,
@@ -150,6 +167,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     counters,
     bytesPerSec: 0,
     etaSec: null,
+    waitingDisk: false,
   }
   const meter = new SpeedMeter()
   let lastEmit = 0
@@ -157,6 +175,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     const t = Date.now()
     if (!force && t - lastEmit < EMIT_INTERVAL_MS) return
     lastEmit = t
+    // Un reintento tras una desconexión vuelve a contar bytes ya contados.
+    progress.totalBytes = Math.max(progress.totalBytes, progress.doneBytes)
     meter.sample(t, progress.doneBytes)
     progress.bytesPerSec = meter.rate()
     const left = progress.totalBytes - progress.doneBytes
@@ -194,6 +214,28 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     store = opened.store
     report.manifest = opened.recovery
     const manifest = store
+
+    /**
+     * Ejecuta una operación sobre el disco. Si falla porque el disco ya no
+     * está, espera a que vuelva el MISMO disco (waitForDisk) y la repite.
+     * Cada operación envuelta es repetible sin duplicar nada.
+     */
+    const withDisk = async <T>(fn: () => Promise<T>): Promise<T> => {
+      for (;;) {
+        try {
+          return await fn()
+        } catch (err) {
+          if (err instanceof CancelledError) throw err
+          if (await target.ping()) throw err
+          if (!input.waitForDisk) throw new DiskDisconnectedError()
+          progress.waitingDisk = true
+          emit(true)
+          await input.waitForDisk(disk.id)
+          progress.waitingDisk = false
+          emit(true)
+        }
+      }
+    }
 
     // ---- Escaneo ----
     setPhase('scan', 0)
@@ -362,34 +404,48 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       return (await target.hash(candidate, onBytes, control)) === known.hash ? 'same' : 'taken'
     }
 
+    /** Elige la ruta en el disco: junto a su foto si es el vídeo de una Live Photo; si no, año/mes + nombre con fecha. */
+    const choosePath = async (f: SourceFile, a: Analysis, blob: Blob, known: { hash: string | null }) => {
+      let path = ''
+      let state: 'free' | 'same' | 'taken' = 'taken'
+      // Vídeo de Live Photo: mismo nombre que su foto (IMG_1234.HEIC → IMG_1234.MOV).
+      const photo = photoOfVideo.get(f)
+      const photoPlace = photo && placed.get(photo)
+      if (photoPlace) {
+        path = swapExt(photoPlace.diskPath, f.name)
+        state = await tryPath(path, f, blob, known)
+      }
+      if (state === 'taken') {
+        const { date } = pickDate(a.exif.date, f.lastModified, now())
+        const dir = folderFor(date)
+        const base = datedName(f.name, date, settings.dateInName)
+        for (let n = 0; state === 'taken'; n++) {
+          path = `${dir}/${withSuffix(base, n)}`
+          state = await tryPath(path, f, blob, known)
+        }
+      }
+      return { path, state, photoPlace }
+    }
+
+    /** Tras un error de escritura en un archivo > 4 GB, el disco es casi seguro FAT32: no se reintentan los demás. */
+    let fat32Suspected = false
+
     for (const hf of toCopy) {
       await control.checkpoint()
       const f = hf.file
       const a = analysis.get(f)!
       progress.currentFile = f.relPath
       progress.phase = 'copy'
+      if (fat32Suspected && f.size > fat32Limit) {
+        report.fat32.push(item(f, { reason: FAT32_REASON }))
+        counters.errors++
+        progress.phaseDone++
+        continue
+      }
       try {
         const blob = await f.getFile()
         const known = { hash: hf.hash }
-        let path = ''
-        let state: 'free' | 'same' | 'taken' = 'taken'
-
-        // Vídeo de Live Photo: mismo nombre que su foto (IMG_1234.HEIC → IMG_1234.MOV).
-        const photo = photoOfVideo.get(f)
-        const photoPlace = photo && placed.get(photo)
-        if (photoPlace) {
-          path = swapExt(photoPlace.diskPath, f.name)
-          state = await tryPath(path, f, blob, known)
-        }
-        if (state === 'taken') {
-          const { date } = pickDate(a.exif.date, f.lastModified, now())
-          const dir = folderFor(date)
-          const base = datedName(f.name, date, settings.dateInName)
-          for (let n = 0; state === 'taken'; n++) {
-            path = `${dir}/${withSuffix(base, n)}`
-            state = await tryPath(path, f, blob, known)
-          }
-        }
+        const { path, state, photoPlace } = await withDisk(() => choosePath(f, a, blob, known))
 
         const exifDate = a.exif.date ? toLocalIso(a.exif.date) : null
         const extra = {
@@ -404,7 +460,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
           report.alreadyOnDisk.push(item(f, { diskPath: path }))
           counters.copied++
         } else {
-          const result = await copyAndVerify(f, blob, path, known.hash)
+          const result = await withDisk(() => copyAndVerify(f, blob, path, known.hash))
           // El estado final combina la verificación de la copia y el análisis del contenido.
           let status: EntryStatus = result.status
           let note = result.note
@@ -428,14 +484,21 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
         placed.set(f, { diskPath: path, hash: known.hash! })
         // La foto de la pareja apunta también a su vídeo.
         if (photoPlace) manifest.annotate(photoPlace.hash, { pair: known.hash! })
-        await saveIfDue()
+        await withDisk(saveIfDue)
       } catch (err) {
-        if (err instanceof CancelledError) throw err
-        // Se compara por nombre: los errores que vienen del Worker pierden su clase.
-        if ((err as Error)?.name === 'QuotaExceededError') throw new DiskFullError()
-        if (!(await target.ping())) throw new DiskDisconnectedError()
-        report.errors.push(item(f, { reason: errorMessage(err) }))
-        counters.errors++
+        if (err instanceof CancelledError || err instanceof DiskDisconnectedError) throw err
+        if (f.size > fat32Limit) {
+          // FAT32 no admite archivos de 4 GB o más. No se interrumpe el resto del backup.
+          fat32Suspected = true
+          report.fat32.push(item(f, { reason: `${FAT32_REASON} (${errorMessage(err)})` }))
+          counters.errors++
+        } else if ((err as Error)?.name === 'QuotaExceededError') {
+          // Se compara por nombre: los errores que vienen del Worker pierden su clase.
+          throw new DiskFullError()
+        } else {
+          report.errors.push(item(f, { reason: errorMessage(err) }))
+          counters.errors++
+        }
       }
       progress.phaseDone++
       emit()
@@ -486,9 +549,12 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
         await store.compact(now())
       } catch (err) {
         // El diario ya guardado permite recuperar en el próximo backup.
-        if (report.outcome === 'completed') {
-          report.outcome = 'failed'
-          report.failure = `No se pudo guardar el manifest: ${errorMessage(err)}`
+        if (report.outcome === 'completed' || report.outcome === 'cancelled') {
+          if (!(await target.ping().catch(() => false))) report.outcome = 'disk-disconnected'
+          else {
+            report.outcome = 'failed'
+            report.failure = `No se pudo guardar el manifest: ${errorMessage(err)}`
+          }
         }
       }
     }

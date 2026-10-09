@@ -10,7 +10,7 @@ Aplicación web para hacer copias de seguridad de fotos y vídeos en un disco ex
 |---|---|---|
 | 1 | Un origen, un disco, copia con progreso, manifest seguro, anti-duplicados (Chrome/Edge escritorio) | ✅ |
 | 2 | Análisis y descarte, HEIC, Live/Motion Photos, tests | ✅ |
-| 3 | Detección de disco, reanudación automática, Wake Lock, batería, FAT32 | ⏳ |
+| 3 | Detección de disco, reanudación automática, Wake Lock, batería, FAT32 | ✅ |
 | 4 | Varios orígenes, discos y dispositivos; caché de hashes | ⏳ |
 | 5 | Comprobar integridad, explorar y restaurar | ⏳ |
 | 6 | Liberar espacio | ⏳ |
@@ -86,4 +86,7 @@ Cada push a `main` ejecuta los tests y publica en GitHub Pages (`.github/workflo
 
 - **Fecha original del archivo**: el navegador no puede conservarla al copiar. Queda en el nombre y en el manifest.
 - **Espacio libre del disco**: ninguna API web lo da. Si el disco se llena, el backup se detiene y avisa.
+- **Desconexión del disco**: el backup espera y continúa solo al volver el mismo disco (`.backup-disk-id`). En Windows, si el disco recibe otra letra, el navegador no lo encuentra y hay que volver a elegir la carpeta.
+- **FAT32**: no admite archivos de 4 GB o más. El navegador no permite saber el formato del disco; se detecta cuando falla un archivo grande, se informa y el resto del backup continúa.
+- **Batería** (Battery Status API) solo en Chrome/Edge; **Wake Lock** requiere la pestaña visible.
 - **Safari / iPhone / Firefox**: no permiten escribir en carpetas. Tendrán un modo compatible con ZIP (Fase 8).

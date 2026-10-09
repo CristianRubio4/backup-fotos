@@ -9,6 +9,10 @@ export class MemoryTarget implements Target {
   disconnectAfterBytes: number | null = null
   /** Corrompe el siguiente archivo copiado (para probar la verificación). */
   corruptNextCopies = 0
+  /** Simula FAT32: falla al escribir archivos más grandes que esto. */
+  maxFileSize: number | null = null
+  /** Rutas en las que se ha intentado copiar. */
+  copyAttempts: string[] = []
   private written = 0
 
   private check() {
@@ -47,6 +51,10 @@ export class MemoryTarget implements Target {
 
   async copyIn(path: string, file: Blob, onProgress: ProgressFn, control: RunControl) {
     this.check()
+    this.copyAttempts.push(path)
+    if (this.maxFileSize !== null && file.size > this.maxFileSize) {
+      throw new DOMException('El archivo es demasiado grande para el sistema de archivos', 'QuotaExceededError')
+    }
     const chunks: Uint8Array<ArrayBuffer>[] = []
     const hash = await hashStream(file.stream(), onProgress, control, {
       write: (chunk) => {

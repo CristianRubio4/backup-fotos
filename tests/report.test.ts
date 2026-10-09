@@ -7,7 +7,7 @@ const it_ = (p: string): ReportItem => ({ name: p, sourcePath: p, size: 10 })
 function report(over: Partial<BackupReport>): BackupReport {
   return {
     outcome: 'completed', startedAt: '', finishedAt: '', diskId: 'd', scanned: 0, ignored: { count: 0, sample: [] },
-    copied: [], alreadyOnDisk: [], duplicates: [], discarded: [], unverified: [], reduced: [], errors: [],
+    copied: [], alreadyOnDisk: [], duplicates: [], discarded: [], unverified: [], reduced: [], errors: [], fat32: [],
     livePhotos: 0, motionPhotos: 0, bytesCopied: 0, manifest: null, ...over,
   }
 }
