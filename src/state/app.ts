@@ -8,7 +8,7 @@ import { ensureDiskId, renameDisk } from '../core/disk'
 import { ManifestStore } from '../core/manifest/store'
 import { DEFAULT_SETTINGS, type Device, type Settings } from '../core/settings'
 import { CancelledError, type SourceFile } from '../core/types'
-import { db, type DiskRecord, type HistoryRecord, type SourceRecord } from '../db'
+import { db, onDbBlocked, type DiskRecord, type HistoryRecord, type SourceRecord } from '../db'
 import { createAnalyzer } from '../platform/analyzer'
 import { capabilities, ensurePermission } from '../platform/capabilities'
 import { checkDisk, DISK_POLL_MS, type DiskStatus } from '../platform/disk-monitor'
@@ -111,6 +111,9 @@ export const useApp = create<AppState>((set, get) => ({
   batteryPaused: false,
 
   async init() {
+    onDbBlocked(() =>
+      set({ notice: 'Hay otra pestaña abierta con una versión anterior de la app. Ciérrala y recarga esta página para continuar.' }),
+    )
     const [sources, disks, settings, device, history, activeDiskKey] = await Promise.all([
       db.listSources(),
       db.listDisks(),

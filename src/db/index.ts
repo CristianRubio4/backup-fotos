@@ -88,7 +88,30 @@ const dbp = openDB<Schema>('backup-fotos', 3, {
     }
     if (oldVersion < 3) db.createObjectStore('exported')
   },
+  // Otra pestaña con una versión anterior de la app tiene la base de datos abierta.
+  blocked() {
+    dbBlocked = true
+    blockedListeners.forEach((l) => l())
+  },
+  // Una versión más nueva de la app (otra pestaña) necesita actualizar la base de datos:
+  // se cierra esta conexión y se recarga para usar la versión nueva.
+  blocking() {
+    void dbp.then((d) => {
+      d.close()
+      location.reload()
+    })
+  },
 })
+
+let dbBlocked = false
+const blockedListeners = new Set<() => void>()
+
+/** Avisa si la base de datos no se puede abrir porque otra pestaña con una versión antigua la tiene abierta. */
+export function onDbBlocked(fn: () => void) {
+  if (dbBlocked) fn()
+  blockedListeners.add(fn)
+  return () => blockedListeners.delete(fn)
+}
 
 async function get<T>(key: string): Promise<T | undefined> {
   return (await (await dbp).get('kv', key)) as T | undefined
