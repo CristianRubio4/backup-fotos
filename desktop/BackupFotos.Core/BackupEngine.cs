@@ -313,9 +313,16 @@ public static class BackupEngine
                     CopiedAt = Naming.UtcIso(o.Now()),
                 }, null);
             }
-            catch
+            catch (Exception ex)
             {
                 try { if (File.Exists(part)) File.Delete(part); } catch { /* se limpia en el siguiente intento */ }
+                // Un corte momentáneo con el móvil: se vuelve a copiar entero (la copia a medias ya se ha borrado).
+                if (attempt < 3 && ex is not OperationCanceledException and not FileNotFoundException && !(ex is IOException io && IsDiskFull(io)))
+                {
+                    bytes.Value = Math.Max(0, bytes.Value - f.Size);
+                    Thread.Sleep(300 * attempt);
+                    continue;
+                }
                 throw;
             }
         }

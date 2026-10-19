@@ -6,14 +6,21 @@ namespace BackupFotos.App;
 /// <summary>
 /// Un móvil (o cámara) conectado por cable, a través de Windows Portable Devices (MTP):
 /// lo mismo que usa el Explorador de Windows. Se recorre su memoria completa.
+///
+/// La conexión con el móvil se puede cortar un instante (pantalla bloqueada, mal
+/// contacto del cable, el móvil reinicia el modo de transferencia): entonces Windows
+/// da errores como "ya se llamó a la función de apagado en este objeto". En ese caso
+/// se vuelve a conectar al mismo móvil y se reintenta.
 /// </summary>
 public sealed class MtpSource : IMediaSource, IDisposable
 {
-    readonly MediaDevice _device;
+    MediaDevice _device;
+    readonly string _id;
 
     public MtpSource(MediaDevice device)
     {
         _device = device;
+        _id = device.DeviceId;
         if (!_device.IsConnected) _device.Connect();
         Name = DisplayName(device);
     }
@@ -39,7 +46,56 @@ public sealed class MtpSource : IMediaSource, IDisposable
 
     static string DevicePath(string rel) => rel.Length == 0 ? @"\" : @"\" + rel.Replace('/', '\\');
 
+    /// <summary>Cierra la conexión rota y abre otra con el mismo móvil (espera un poco si aún no ha vuelto).</summary>
+    void Reconnect()
+    {
+        try
+        {
+            if (_device.IsConnected) _device.Disconnect();
+        }
+        catch
+        {
+            // Ya estaba rota.
+        }
+        for (var i = 0; i < 6; i++)
+        {
+            var d = MediaDevice.GetDevices().FirstOrDefault(x => x.DeviceId == _id);
+            if (d is not null)
+            {
+                try
+                {
+                    d.Connect();
+                    _device = d;
+                    return;
+                }
+                catch
+                {
+                    // El móvil aún se está reconectando.
+                }
+            }
+            Thread.Sleep(1000);
+        }
+        throw new IOException("Se ha perdido la conexión con el móvil. Comprueba el cable, desbloquéalo y elige \"Transferencia de archivos\".");
+    }
+
+    static bool Retryable(Exception ex) => ex is not OperationCanceledException and not FileNotFoundException;
+
     public IReadOnlyList<SourceEntry> List(string dir)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return ListOnce(dir);
+            }
+            catch (Exception ex) when (attempt < 3 && Retryable(ex))
+            {
+                Reconnect();
+            }
+        }
+    }
+
+    IReadOnlyList<SourceEntry> ListOnce(string dir)
     {
         var info = _device.GetDirectoryInfo(DevicePath(dir));
         var list = new List<SourceEntry>();
@@ -60,10 +116,23 @@ public sealed class MtpSource : IMediaSource, IDisposable
         return list;
     }
 
+    /// <summary>
+    /// Copia el archivo. Si la conexión se corta a mitad, se reconecta y se lanza el error:
+    /// quien llama descarta lo copiado a medias y lo vuelve a pedir (no se puede seguir
+    /// escribiendo sobre una copia incompleta).
+    /// </summary>
     public void CopyTo(SourceEntry file, Stream destination, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        _device.DownloadFile(DevicePath(file.Path), destination);
+        try
+        {
+            _device.DownloadFile(DevicePath(file.Path), destination);
+        }
+        catch (Exception ex) when (Retryable(ex))
+        {
+            try { Reconnect(); } catch { /* el error original es más útil */ }
+            throw;
+        }
     }
 
     public void Dispose()

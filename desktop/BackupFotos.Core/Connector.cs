@@ -219,7 +219,20 @@ public sealed class ConnectorServer : IDisposable
                     entry = source.List(dir).FirstOrDefault(e => !e.IsDirectory && e.Path == path)
                         ?? throw new FileNotFoundException($"No está en el móvil: {path}");
                 }
-                cached = _cache.Put(deviceId, path, s => source.CopyTo(entry, s, _stop.Token));
+                // Si la conexión con el móvil se corta a mitad, se descarta lo leído y se vuelve a pedir entero.
+                for (var attempt = 1; ; attempt++)
+                {
+                    try
+                    {
+                        cached = _cache.Put(deviceId, path, s => source.CopyTo(entry, s, _stop.Token));
+                        break;
+                    }
+                    catch (Exception ex) when (attempt < 3 && ex is not OperationCanceledException and not FileNotFoundException)
+                    {
+                        Activity?.Invoke($"Reintentando {path} (la conexión con el móvil se cortó)");
+                        Thread.Sleep(500 * attempt);
+                    }
+                }
             });
         }
         using var file = new FileStream(cached!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 20);
