@@ -32,7 +32,21 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Tests
-        run: dotnet test desktop/BackupFotos.Tests/BackupFotos.Tests.csproj -c Release --logger "console;verbosity=normal"
+        run: dotnet test desktop/BackupFotos.Tests/BackupFotos.Tests.csproj -c Release --logger "console;verbosity=normal" --logger "trx;LogFileName=resultados.trx" --results-directory test-results
+
+      # Los registros de Actions solo se ven con sesión iniciada: los fallos se publican como anotaciones visibles.
+      - name: Publicar los tests fallidos
+        if: failure()
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem test-results -Filter *.trx -Recurse) {
+            [xml]$x = Get-Content $f.FullName
+            foreach ($r in $x.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Failed' }) {
+              $msg = ($r.Output.ErrorInfo.Message + ' | ' + $r.Output.ErrorInfo.StackTrace) -replace "`r?`n", ' ' -replace '%', '%25'
+              if ($msg.Length -gt 1500) { $msg = $msg.Substring(0, 1500) }
+              Write-Output "::error title=Test fallido: $($r.testName)::$msg"
+            }
+          }
 
       - name: Compilar BackupFotos.exe (un solo archivo, sin instalar .NET)
         run: >
