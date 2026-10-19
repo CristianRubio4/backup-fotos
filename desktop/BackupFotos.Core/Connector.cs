@@ -109,7 +109,7 @@ public sealed class ConnectorServer : IDisposable
             }
             if (req.Method == "OPTIONS")
             {
-                WriteHead(stream, 204, origin, null, 0, extra: "Access-Control-Allow-Methods: GET\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Private-Network: true\r\nAccess-Control-Max-Age: 600\r\n");
+                WriteHead(stream, 204, origin, null, 0, extra: "Access-Control-Allow-Methods: GET\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Max-Age: 600\r\n");
                 return;
             }
             if (req.Method != "GET")
