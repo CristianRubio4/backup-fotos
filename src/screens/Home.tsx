@@ -220,7 +220,10 @@ function CablePanel() {
         </p>
       ) : (
         <>
-          <p>El programa ve estos móviles. Añade el tuyo: se copiarán <b>todas</b> sus carpetas (cámara, capturas, WhatsApp, tarjeta SD…).</p>
+          <p>
+            El programa ve estos móviles (por cable, o por wifi con <b>Enlace móvil</b>). Añade el tuyo: se copiarán <b>todas</b> sus carpetas
+            (cámara, capturas, WhatsApp, tarjeta SD…). Por cable es más rápido y fiable.
+          </p>
           <ul className="space-y-2">
             {connector.map((d) => {
               const added = cableDevices.some((c) => c.id === d.id)

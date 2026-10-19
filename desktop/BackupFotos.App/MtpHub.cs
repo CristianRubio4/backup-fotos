@@ -44,10 +44,31 @@ public sealed class MtpHub : IDeviceHub, IDisposable
         return result;
     }
 
+    /// <summary>
+    /// Móviles enlazados con "Enlace móvil" (Phone Link): Windows los muestra en
+    /// %USERPROFILE%\CrossDevice\&lt;nombre&gt; y trae cada archivo del móvil por wifi al leerlo.
+    /// </summary>
+    static string CrossDeviceRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "CrossDevice");
+
+    const string LinkPrefix = "enlace:";
+
+    static IEnumerable<DeviceInfo> LinkedPhones()
+    {
+        if (!Directory.Exists(CrossDeviceRoot)) yield break;
+        string[] dirs;
+        try { dirs = Directory.GetDirectories(CrossDeviceRoot); } catch { yield break; }
+        foreach (var d in dirs)
+        {
+            var name = Path.GetFileName(d);
+            if (!name.StartsWith('.')) yield return new DeviceInfo(LinkPrefix + name, $"{name} · Enlace móvil (wifi)");
+        }
+    }
+
     public IReadOnlyList<DeviceInfo> List() => Run(() =>
     {
         var list = new List<DeviceInfo>();
         foreach (var d in MediaDevice.GetDevices()) list.Add(new DeviceInfo(d.DeviceId, MtpSource.DisplayName(d)));
+        list.AddRange(LinkedPhones());
         // Los que ya no están conectados se cierran.
         foreach (var gone in _open.Keys.Where(k => list.All(d => d.Id != k)).ToList())
         {
@@ -59,6 +80,16 @@ public sealed class MtpHub : IDeviceHub, IDisposable
 
     public void With(string deviceId, Action<IMediaSource> fn) => Run(() =>
     {
+        // Enlace móvil: es una carpeta del PC; al leer cada archivo, Windows lo trae del móvil por wifi.
+        if (deviceId.StartsWith(LinkPrefix, StringComparison.Ordinal))
+        {
+            var name = deviceId[LinkPrefix.Length..];
+            var path = Path.Combine(CrossDeviceRoot, name);
+            if (!Directory.Exists(path))
+                throw new FileNotFoundException("El móvil ya no aparece en Enlace móvil. Abre la app Enlace a Windows en el móvil y comprueba que está conectado.");
+            fn(new FolderSource(path, name));
+            return true;
+        }
         if (!_open.TryGetValue(deviceId, out var source))
         {
             var d = MediaDevice.GetDevices().FirstOrDefault(x => x.DeviceId == deviceId)

@@ -38,8 +38,17 @@ public sealed class FolderSource(string root, string? name = null) : IMediaSourc
 
     public void CopyTo(SourceEntry file, Stream destination, CancellationToken ct)
     {
-        using var s = File.OpenRead(System.IO.Path.Combine(root, file.Path.Replace('/', System.IO.Path.DirectorySeparatorChar)));
-        s.CopyTo(destination, 1 << 20);
+        Stream s;
+        try
+        {
+            s = File.OpenRead(System.IO.Path.Combine(root, file.Path.Replace('/', System.IO.Path.DirectorySeparatorChar)));
+        }
+        catch (IOException ex) when ((ex.HResult & 0xFFFF) is 0x16A or 0x16B or 0x179 or 0x17C or 0x183 or 0x186 or 0x18E)
+        {
+            // Errores de archivos "en la nube" (ERROR_CLOUD_FILE_*): en Enlace móvil, el móvil no responde por wifi.
+            throw new IOException("No se ha podido traer el archivo del móvil por Enlace móvil: abre la app Enlace a Windows en el móvil, actívala y permite el acceso a archivos. Por cable es más fiable.", ex);
+        }
+        using (s) s.CopyTo(destination, 1 << 20);
     }
 
     public static string Join(string dir, string name) => dir.Length == 0 ? name : $"{dir}/{name}";

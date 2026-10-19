@@ -25,6 +25,8 @@ Cada backup crea en el destino **una sola carpeta** con el nombre del móvil y l
 
 La próxima vez basta con abrir el programa, conectar el móvil y pulsar **Hacer backup** en la web: el móvil queda recordado.
 
+**Sin cable, por Enlace móvil (wifi):** si tienes el móvil enlazado con *Enlace móvil* / *Enlace a Windows* (aparece en el Explorador, en "Dispositivos móviles"), el programa también lo muestra como `Nombre · Enlace móvil (wifi)`: añádelo igual en **Móvil por cable**. En el móvil, la app **Enlace a Windows** debe estar activada y con permiso para los archivos (Ajustes de la app → Funciones → Archivos). Es más lento que el cable y depende de la wifi; si Windows avisa de que "no se pueden transferir archivos", usa el cable.
+
 Mantén el móvil desbloqueado durante la copia. Si se bloquea o se desconecta, lo ya copiado queda guardado y verificado; vuelve a lanzar el backup.
 
 **Solo con el móvil (sin PC)**
