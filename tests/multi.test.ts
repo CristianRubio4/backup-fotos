@@ -137,16 +137,15 @@ describe('una carpeta por copia', () => {
       })
     // Primera vez: se corta tras copiar algunas (cancelación).
     const ctl = new Controller()
-    const first = await run(t, phone(6), {
-      ...snap(t, new Date(2026, 9, 19, 12, 0)),
-      readOnce: true,
-      slowSource: true,
-      hashCache,
-      control: ctl,
-      onProgress: (p) => {
-        if (p.phase === 'copy' && p.counters.copied >= 3) ctl.cancel()
+    // Se corta justo después de la tercera foto copiada (la caché de huellas se actualiza al copiar cada una).
+    const cutting: HashCache = {
+      get: hashCache.get,
+      set: async (f, h) => {
+        await hashCache.set(f, h)
+        if (cache.size === 3) ctl.cancel()
       },
-    })
+    }
+    const first = await run(t, phone(6), { ...snap(t, new Date(2026, 9, 19, 12, 0)), readOnce: true, slowSource: true, hashCache: cutting, control: ctl })
     expect(first.outcome).toBe('cancelled')
     const done = first.copied.length
     expect(done).toBeGreaterThan(0)
