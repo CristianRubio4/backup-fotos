@@ -27,7 +27,7 @@ export interface Target {
   /** true si el disco sigue accesible. */
   ping(): Promise<boolean>
   /** Todos los archivos del disco (recursivo), salvo los de control (empiezan por "."). */
-  walkFiles(): AsyncIterable<DiskFile>
+  walkFiles(accept?: (path: string) => boolean): AsyncIterable<DiskFile>
   /** Contenido del archivo tal cual está en el disco, o null si no existe. */
   readFile(path: string): Promise<Blob | null>
 }

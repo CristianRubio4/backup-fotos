@@ -78,14 +78,16 @@ export function dominantCamera(exifs: Array<{ make?: string; model?: string }>) 
 }
 
 /**
- * Carpeta de destino de un archivo:
- *  - con carpeta por copia: "Copia 2026-10-19 14h30/" (+ dispositivo),
- *  - si no: año/mes (con el dispositivo delante si se separan).
+ * Subcarpeta de un archivo dentro del destino: año/mes (o nada, si cada copia
+ * va en su propia carpeta), con el dispositivo delante si se separan.
  */
-export function targetDir(opts: { runFolder: string | null; device: string | null; date: Date | null }) {
-  const device = opts.device ? sanitizeName(opts.device) : null
-  if (opts.runFolder) return device ? `${opts.runFolder}/${device}` : opts.runFolder
-  return (device ? `${device}/` : '') + folderFor(opts.date)
+export function targetDir(opts: { byDate: boolean; device: string | null; date: Date | null }) {
+  return [opts.device ? sanitizeName(opts.device) : '', opts.byDate ? folderFor(opts.date) : ''].filter(Boolean).join('/')
+}
+
+/** Une carpetas y nombre ignorando las partes vacías: ("", "a.jpg") → "a.jpg". */
+export function joinPath(...parts: string[]) {
+  return parts.filter(Boolean).join('/')
 }
 
 /**

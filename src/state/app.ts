@@ -6,12 +6,13 @@ import { mergeForced } from '../core/backup/report'
 import { Controller } from '../core/control'
 import { friendlyError } from '../core/errors'
 import { isMedia } from '../core/media'
-import { ensureDiskId, renameDisk } from '../core/disk'
+import { ensureDiskId, readDiskId, renameDisk } from '../core/disk'
 import { ManifestStore } from '../core/manifest/store'
 import { DEFAULT_SETTINGS, type Device, type Settings } from '../core/settings'
 import { CancelledError, type SourceFile } from '../core/types'
 import { db, onDbBlocked, type DiskRecord, type HistoryRecord, type SourceRecord } from '../db'
 import { createAnalyzer } from '../platform/analyzer'
+import { FsaTarget } from '../platform/fsa-target'
 import { capabilities, ensurePermission } from '../platform/capabilities'
 import { checkDisk, DISK_POLL_MS, type DiskStatus } from '../platform/disk-monitor'
 import { io, POOL_SIZE, workerExif, workerHasher } from '../platform/io'
@@ -209,15 +210,18 @@ export const useApp = create<AppState>((set, get) => ({
     try {
       const h = await window.showDirectoryPicker({ id: 'backup-destino', mode: 'readwrite' })
       const { disks } = get()
-      // Cada disco tiene un identificador en .backup-disk-id; se crea la primera vez.
-      const info = await ensureDiskId(diskTarget({ handle: h, diskId: null }), h.name)
-      const existing = disks.find((d) => d.diskId === info.id)
+      // Con "una carpeta por copia" no se escribe nada en la carpeta elegida: cada copia lleva dentro
+      // su propio .backup-disk-id. Si no, el destino tiene su identificador (se crea la primera vez).
+      const root = diskTarget({ handle: h, diskId: null })
+      const info = get().settings.runFolder ? await readDiskId(root) : await ensureDiskId(root, h.name)
+      let existing = info ? disks.find((d) => d.diskId === info.id) : undefined
+      for (const d of disks) if (!existing && (await d.handle.isSameEntry(h).catch(() => false))) existing = d
       let rec: DiskRecord
       if (existing) {
-        // El mismo disco elegido otra vez (p. ej. con otra letra en Windows): se actualiza su carpeta.
-        rec = { ...existing, handle: h, name: info.name }
+        // La misma carpeta elegida otra vez (p. ej. con otra letra en Windows): se actualiza.
+        rec = { ...existing, handle: h, name: info?.name ?? existing.name }
       } else {
-        rec = { key: crypto.randomUUID(), diskId: info.id, name: info.name, handle: h, addedAt: new Date().toISOString(), encrypted: !!info.encryption }
+        rec = { key: crypto.randomUUID(), diskId: info?.id ?? null, name: info?.name ?? h.name, handle: h, addedAt: new Date().toISOString(), encrypted: !!info?.encryption }
       }
       await db.putDisk(rec)
       await db.setActiveDisk(rec.key)
@@ -417,12 +421,13 @@ function startDiskPolling() {
  * .backup-disk-id). Si hace falta reconfirmar el permiso, la pantalla de
  * progreso muestra el botón (requestPermission necesita un clic).
  */
-async function waitForDisk(disk: DiskRecord, diskId: string, ctl: Controller) {
+async function waitForDisk(disk: DiskRecord, diskId: string, ctl: Controller, snapshot: boolean) {
   for (;;) {
     if (ctl.cancelled) throw new CancelledError()
     const s = await checkDisk(disk.handle)
     useApp.setState({ diskStates: { ...useApp.getState().diskStates, [disk.key]: s } })
-    if (s.state === 'connected' && s.id === diskId) {
+    // Con una carpeta por copia, el identificador está dentro de la copia: basta con que vuelva la misma carpeta.
+    if (s.state === 'connected' && (snapshot || s.id === diskId)) {
       useApp.setState({ waitReason: null })
       return
     }
@@ -476,10 +481,14 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
     }
   })
 
+  const snapshot = settings.runFolder && !disk.encrypted
   let report: BackupReport
   try {
     report = await runBackup({
       target: diskTarget(disk),
+      // Cada backup en su carpeta "Móvil - fecha hora" (creada dentro del destino; todo va dentro).
+      openRunFolder: snapshot ? async (name) => new FsaTarget(await disk.handle.getDirectoryHandle(name, { create: true })) : undefined,
+      runFolderName: force && previous?.folder ? previous.folder : undefined,
       diskName: disk.name,
       encrypted: !!disk.encrypted,
       scan: force
@@ -510,7 +519,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
       hashCache: db.hashCache(),
       concurrency: POOL_SIZE,
       force: force && new Set(force.map((f) => f.relPath)),
-      waitForDisk: (diskId) => waitForDisk(disk, diskId, ctl),
+      waitForDisk: (diskId) => waitForDisk(disk, diskId, ctl, snapshot),
       device,
       settings,
       control: ctl,
@@ -547,7 +556,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
     bytesCopied: report.bytesCopied,
   })
   // Un disco migrado de la versión anterior recibe aquí su identificador (lo crea el motor en el primer backup).
-  if (report.diskId && disk.diskId !== report.diskId) {
+  if (!report.folder && report.diskId && disk.diskId !== report.diskId) {
     await useApp.getState().updateDisk(disk.key, { diskId: report.diskId })
     disk = { ...disk, diskId: report.diskId }
   }

@@ -6,7 +6,7 @@ import { Alert, Button, Card, PageHeader, Stat } from '../components/ui'
 import type { DiscardCategory } from '../core/analysis/classify'
 import type { BackupReport, Outcome, ReportItem } from '../core/backup/engine'
 import { formatBytes, formatDuration, plural } from '../core/format'
-import { scannedFile, useApp } from '../state/app'
+import { activeDisk, scannedFile, useApp } from '../state/app'
 import { diskTarget, isLocked, useKeys } from '../state/keys'
 
 const OUTCOME: Record<Outcome, { tone: 'ok' | 'warn' | 'error'; text: string }> = {
@@ -114,7 +114,8 @@ function Copied({ report }: { report: BackupReport }) {
   const { disks, diskStates } = useApp()
   useKeys()
   const items = useMemo(() => [...report.copied, ...report.alreadyOnDisk], [report])
-  const disk = disks.find((d) => d.diskId && d.diskId === report.diskId)
+  // Con una carpeta por copia, el identificador es el de la copia: el disco es el destino activo.
+  const disk = disks.find((d) => d.diskId && d.diskId === report.diskId) ?? (report.folder ? activeDisk() : undefined)
   const diskReady = !!disk && diskStates[disk.key]?.state === 'connected' && !(disk.encrypted && isLocked(disk))
 
   // El registro del disco se renueva con cada sondeo: se guarda en una ref para
@@ -214,6 +215,8 @@ export function ReportScreen() {
         </div>
         <p className="mt-3 text-xs text-muted">
           {plural(report.scanned, 'foto o vídeo analizado', 'fotos y vídeos analizados')} en {formatDuration(secs)}.
+          {report.duplicates.length > 0 &&
+            ` ${plural(report.duplicates.length, 'archivo no se ha copiado porque ya estaba', 'archivos no se han copiado porque ya estaban')} ${report.folder ? 'repetidos en la selección' : 'guardados en el disco (de backups anteriores o copiados antes a esa carpeta)'}: no se duplica nada.`}
           {report.ignored.count > 0 && ` Se ${report.ignored.count === 1 ? 'ha' : 'han'} ignorado ${plural(report.ignored.count, 'archivo que no es foto ni vídeo', 'archivos que no son fotos ni vídeos')}.`}
           {report.livePhotos > 0 && ` ${plural(report.livePhotos, 'Live Photo (foto + vídeo) se ha guardado junta', 'Live Photos (foto + vídeo) se han guardado juntas')} con el mismo nombre.`}
           {report.motionPhotos > 0 && ` ${plural(report.motionPhotos, 'Motion Photo se ha copiado', 'Motion Photos se han copiado')} con su vídeo incrustado.`}

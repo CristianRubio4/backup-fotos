@@ -64,7 +64,11 @@ interface ToolsState {
 let ctl: Controller | null = null
 
 /** Disco activo listo para usarlo: conectado y, si está cifrado, desbloqueado. */
-export function readyDisk(): DiskRecord {
+/**
+ * Disco activo listo para usar. Con `copies`, vale también un destino con una
+ * carpeta por copia (sin identificador en la raíz: cada copia lleva el suyo).
+ */
+export function readyDisk(opts: { copies?: boolean } = {}): DiskRecord {
   const d = activeDisk()
   const status = d && useApp.getState().diskStates[d.key]
   if (!d || status?.state !== 'connected') throw new Error('Conecta el disco de backup (y permite el acceso) para usar esta herramienta.')
@@ -72,7 +76,14 @@ export function readyDisk(): DiskRecord {
     void useApp.getState().updateDisk(d.key, { diskId: status.id })
     return { ...d, diskId: status.id }
   }
-  if (!d.diskId) throw new Error('Este disco aún no tiene identificador: haz un backup en él o vuelve a añadirlo.')
+  if (!d.diskId && opts.copies && !d.encrypted) return d
+  if (!d.diskId) {
+    throw new Error(
+      useApp.getState().settings.runFolder
+        ? 'Cada backup se guarda en su propia carpeta ("Móvil - fecha hora"), con su registro dentro: para ver o recuperar fotos usa Explorar. Esta herramienta trabaja con la estructura por fecha (Ajustes → Estructura en el disco).'
+        : 'Este disco aún no tiene identificador: haz un backup en él o vuelve a añadirlo.',
+    )
+  }
   if (d.encrypted && isLocked(d)) throw new Error('Este disco está cifrado: desbloquéalo con su contraseña en Inicio.')
   return d
 }
@@ -247,7 +258,7 @@ export const useTools = create<ToolsState>((set, get) => ({
   async runRestore(entries) {
     let disk: DiskRecord
     try {
-      disk = readyDisk()
+      disk = readyDisk({ copies: true })
     } catch (err) {
       return set({ error: (err as Error).message })
     }

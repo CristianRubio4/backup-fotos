@@ -7,7 +7,7 @@ import { findLivePhotos } from '../analysis/pairing'
 import type { ReportItem } from '../backup/engine'
 import type { ManifestEntry } from '../manifest/schema'
 import { extOf, isVideo } from '../media'
-import { datedName, dominantCamera, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
+import { datedName, dominantCamera, joinPath, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
 import type { Device, Settings } from '../settings'
 import { CancelledError, type Analyzer, type ExifInfo, type ExifReader, type Hasher, type RunControl, type SourceFile } from '../types'
 
@@ -160,9 +160,9 @@ export async function planCompat(opts: {
     if (!zipPath) {
       const { date } = pickDate(a.exif.date, f.lastModified, now())
       const base = datedName(f.name, date, settings.dateInName)
-      const dir = targetDir({ runFolder, device: deviceDir, date })
+      const dir = joinPath(runFolder ?? '', targetDir({ byDate: !runFolder, device: deviceDir, date }))
       for (let n = 0; !zipPath; n++) {
-        const p = `${dir}/${withSuffix(base, n)}`
+        const p = joinPath(dir, withSuffix(base, n))
         if (!used.has(p.toLowerCase())) zipPath = p
       }
     }

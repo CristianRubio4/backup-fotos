@@ -94,10 +94,11 @@ export class MemoryTarget implements Target {
     return !this.disconnected
   }
 
-  async *walkFiles() {
+  async *walkFiles(accept?: (path: string) => boolean) {
     this.check()
     for (const [path, b] of [...this.files].sort(([a], [b]) => a.localeCompare(b))) {
       if (path.split('/').some((seg) => seg.startsWith('.'))) continue
+      if (accept && !accept(path)) continue
       yield { path, size: b.byteLength, lastModified: 0 }
     }
   }
@@ -109,7 +110,29 @@ export class MemoryTarget implements Target {
   }
 
   mediaPaths() {
-    return [...this.files.keys()].filter((k) => !k.startsWith('.')).sort()
+    return [...this.files.keys()].filter((k) => !k.split('/').some((seg) => seg.startsWith('.'))).sort()
+  }
+
+  /** Subcarpeta como destino (como FsaTarget sobre getDirectoryHandle). */
+  child(name: string): Target {
+    const parent = this
+    const p = (path: string) => `${name}/${path}`
+    return {
+      readText: (path) => parent.readText(p(path)),
+      writeText: (path, text) => parent.writeText(p(path), text),
+      stat: (path) => parent.stat(p(path)),
+      remove: (path) => parent.remove(p(path)),
+      list: (dir) => parent.list(p(dir)),
+      copyIn: (path, file, onProgress, control) => parent.copyIn(p(path), file, onProgress, control),
+      hash: (path, onProgress, control) => parent.hash(p(path), onProgress, control),
+      ping: () => parent.ping(),
+      async *walkFiles(accept) {
+        for await (const f of parent.walkFiles((path) => path.startsWith(`${name}/`) && (!accept || accept(path.slice(name.length + 1))))) {
+          yield { ...f, path: f.path.slice(name.length + 1) }
+        }
+      },
+      readFile: (path) => parent.readFile(p(path)),
+    }
   }
 }
 
@@ -153,8 +176,8 @@ export class EncryptedMemoryTarget extends MemoryTarget {
     return decryptCopy(this.keys, new Blob([b]), null, onProgress, control).catch(() => 'no-descifra')
   }
 
-  async *walkFiles() {
-    for await (const f of super.walkFiles()) yield { ...f, size: plainSize(f.size) }
+  async *walkFiles(accept?: (path: string) => boolean) {
+    for await (const f of super.walkFiles(accept)) yield { ...f, size: plainSize(f.size) }
   }
 
   async readFile(path: string) {

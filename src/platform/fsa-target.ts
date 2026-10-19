@@ -122,17 +122,28 @@ export class FsaTarget implements Target {
     return this.encrypts(path) ? io.hashEncrypted(h, this.keys!, onProgress) : io.hashHandle(h, onProgress)
   }
 
-  async *walkFiles(): AsyncIterable<DiskFile> {
+  /** Recorre el disco. Con `accept`, solo se leen los datos (tamaño, fecha) de los archivos que interesan: mucho más rápido. */
+  async *walkFiles(accept?: (path: string) => boolean): AsyncIterable<DiskFile> {
     const encrypted = !!this.keys
     async function* visit(dir: FileSystemDirectoryHandle, prefix: string): AsyncIterable<DiskFile> {
       for await (const [name, h] of dir.entries()) {
-        if (name.startsWith('.')) continue // archivos y carpetas de control (.backup-*, .Trashes…)
+        if (name.startsWith('.') || name.startsWith('$')) continue // control (.backup-*, .Trashes…) y sistema ($RECYCLE.BIN…)
         const path = prefix ? `${prefix}/${name}` : name
         if (h.kind === 'directory') {
-          if (SKIP_DIRS.has(name.toLowerCase())) continue
-          yield* visit(h as FileSystemDirectoryHandle, path)
-        } else {
-          const f = await (h as FileSystemFileHandle).getFile()
+          if (SKIP_DIRS.has(name.toLowerCase()) || name === 'System Volume Information') continue
+          try {
+            yield* visit(h as FileSystemDirectoryHandle, path)
+          } catch (err) {
+            if (isMissing(err)) throw err
+            // Carpeta del sistema sin permiso de lectura: se salta.
+          }
+        } else if (!accept || accept(path)) {
+          let f: File
+          try {
+            f = await (h as FileSystemFileHandle).getFile()
+          } catch {
+            continue // archivo bloqueado o ilegible: no se puede registrar, pero no detiene nada
+          }
           yield { path, size: encrypted ? plainSize(f.size) : f.size, lastModified: f.lastModified }
         }
       }

@@ -27,15 +27,16 @@ export function HelpScreen() {
       />
       <Section title="Cómo funciona">
         <p>
-          La app recorre la carpeta de fotos, calcula una huella (hash SHA-256) de cada archivo y copia al disco solo lo que aún no está.
-          Cada backup guarda lo nuevo en su propia carpeta, con el nombre del móvil (leído de las propias fotos) y el día y la hora de la
-          copia (<b>iPhone 15 Pro - 2026-10-19 14h30</b>; si no se sabe el móvil, <b>Copia 2026-10-19 14h30</b>). Si lo
-          prefieres, en Ajustes puedes ordenarlas en carpetas <b>año/mes</b> según la fecha de la foto. Al terminar, en el informe pulsa{' '}
-          <b>Copiados</b> para ver una a una las fotos de esa copia.
+          Cada backup crea en el destino <b>una sola carpeta</b> con el nombre del móvil (leído de las propias fotos) y el día y la hora
+          (<b>iPhone 15 Pro - 2026-10-19 14h30</b>; si no se sabe el móvil, <b>Copia 2026-10-19 14h30</b>) y guarda dentro todas las fotos
+          elegidas y los archivos de registro de la app. No se escribe nada fuera de esa carpeta. Cada copia se verifica con una huella
+          (SHA-256) y las fotos repetidas dentro de la selección se copian una sola vez. Al terminar, en el informe pulsa <b>Copiados</b> para
+          ver una a una las fotos de esa copia.
         </p>
         <p>
-          Cada copia se relee del disco y se compara con el original. En la raíz del disco se guarda <code>.backup-manifest.json</code>,
-          el registro de todo lo copiado, con una copia de seguridad en <code>.backup-manifest.bak</code>. No los borres.
+          Dentro de cada carpeta de copia se guarda <code>.backup-manifest.json</code>, el registro de lo copiado, con una copia de seguridad
+          en <code>.backup-manifest.bak</code>. No los borres. Si prefieres un único backup que solo añade lo nuevo, en carpetas{' '}
+          <b>año/mes</b>, elígelo en Ajustes → Estructura en el disco.
         </p>
         <p>Nunca se borra ni se modifica nada en la carpeta de origen.</p>
       </Section>

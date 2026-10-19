@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { runBackup, type EngineInput } from '../src/core/backup/engine'
 import { Controller } from '../src/core/control'
+import { DISK_ID_FILE } from '../src/core/disk'
 import { MANIFEST_FILE, parseManifest } from '../src/core/manifest/schema'
 import { DEFAULT_SETTINGS, type Settings } from './test-settings'
 import type { HashCache, SourceFile } from '../src/core/types'
@@ -45,43 +46,80 @@ describe('varios dispositivos', () => {
 })
 
 describe('una carpeta por copia', () => {
-  it('cada backup va a "Copia AAAA-MM-DD HHhMM" y solo con lo nuevo', async () => {
-    const t = new MemoryTarget()
-    const r1 = await run(t, [src('IMG_1.jpg', 'a', MAY)], { settings: { runFolder: true }, now: () => new Date(2026, 9, 19, 9, 5, 30) })
-    const r2 = await run(t, [src('IMG_1.jpg', 'a', MAY), src('IMG_2.jpg', 'bb', MAY)], { settings: { runFolder: true }, now: () => new Date(2026, 9, 19, 18, 42) })
-    expect(r1.folder).toBe('Copia 2026-10-19 09h05')
-    expect(r2.folder).toBe('Copia 2026-10-19 18h42')
-    expect(r2.duplicates).toHaveLength(1)
-    expect(t.mediaPaths()).toEqual(['Copia 2026-10-19 09h05/2024-05-17_103000_IMG_1.jpg', 'Copia 2026-10-19 18h42/2024-05-17_103000_IMG_2.jpg'])
-    expect(r2.copied[0].diskPath).toBe('Copia 2026-10-19 18h42/2024-05-17_103000_IMG_2.jpg')
+  const snap = (t: MemoryTarget, now: Date, settings: Partial<Settings> = {}) => ({
+    settings: { runFolder: true, ...settings },
+    openRunFolder: async (name: string) => t.child(name),
+    now: () => now,
   })
 
-  it('si las fotos son de un móvil, la carpeta lleva su nombre (del EXIF)', async () => {
+  it('cada backup crea solo su carpeta, completa, con los archivos de control dentro', async () => {
+    const t = new MemoryTarget()
+    const r1 = await run(t, [src('IMG_1.jpg', 'a', MAY)], snap(t, new Date(2026, 9, 19, 9, 5, 30)))
+    const r2 = await run(t, [src('IMG_1.jpg', 'a', MAY), src('IMG_2.jpg', 'bb', MAY)], snap(t, new Date(2026, 9, 19, 18, 42)))
+    expect(r1.folder).toBe('Copia 2026-10-19 09h05')
+    expect(r2.folder).toBe('Copia 2026-10-19 18h42')
+    // La segunda copia es completa: también lleva IMG_1, aunque ya estuviera en la primera.
+    expect(r2.duplicates).toHaveLength(0)
+    expect(r2.copied).toHaveLength(2)
+    expect(t.mediaPaths()).toEqual([
+      'Copia 2026-10-19 09h05/2024-05-17_103000_IMG_1.jpg',
+      'Copia 2026-10-19 18h42/2024-05-17_103000_IMG_1.jpg',
+      'Copia 2026-10-19 18h42/2024-05-17_103000_IMG_2.jpg',
+    ])
+    expect(r2.copied.map((c) => c.diskPath)).toContain('Copia 2026-10-19 18h42/2024-05-17_103000_IMG_2.jpg')
+    // Nada suelto en la raíz del destino: el disco-id y el manifest van dentro de cada copia.
+    const root = [...t.files.keys()].filter((k) => !k.includes('/'))
+    expect(root).toEqual([])
+    expect(t.files.has(`Copia 2026-10-19 09h05/${MANIFEST_FILE}`)).toBe(true)
+    expect(t.files.has(`Copia 2026-10-19 09h05/${DISK_ID_FILE}`)).toBe(true)
+  })
+
+  it('la carpeta lleva el nombre del móvil (del EXIF)', async () => {
     const t = new MemoryTarget()
     const exif = async (b: Blob) => ((await b.text()).startsWith('wa') ? { date: null } : { date: null, make: 'samsung', model: 'SM-S911B' })
     const r = await run(t, [src('DCIM/IMG_1.jpg', 'foto 1', MAY), src('DCIM/IMG_2.jpg', 'foto 22', MAY), src('WhatsApp/IMG-WA.jpg', 'wa sin exif', MAY)], {
-      settings: { runFolder: true },
+      ...snap(t, new Date(2026, 9, 19, 14, 30)),
       readExif: exif,
-      now: () => new Date(2026, 9, 19, 14, 30),
     })
     expect(r.folder).toBe('Samsung SM-S911B - 2026-10-19 14h30')
+    expect(t.mediaPaths()).toHaveLength(3)
     expect(t.mediaPaths().every((p) => p.startsWith('Samsung SM-S911B - 2026-10-19 14h30/'))).toBe(true)
   })
 
   it('con "una carpeta por dispositivo", el dispositivo va dentro de la copia', async () => {
     const t = new MemoryTarget()
-    await run(t, [src('IMG_1.jpg', 'a', MAY)], { device: { id: 'm', name: 'Móvil de Ana' }, settings: { runFolder: true, layout: 'per-device' }, now: () => new Date(2026, 9, 19, 9, 5) })
+    await run(t, [src('IMG_1.jpg', 'a', MAY)], { device: { id: 'm', name: 'Móvil de Ana' }, ...snap(t, new Date(2026, 9, 19, 9, 5), { layout: 'per-device' }) })
     expect(t.mediaPaths()).toEqual(['Copia 2026-10-19 09h05/Móvil de Ana/2024-05-17_103000_IMG_1.jpg'])
+  })
+
+  it('"Copiar igualmente" va a la misma carpeta de la copia', async () => {
+    const t = new MemoryTarget()
+    const r = await run(t, [src('IMG_9.jpg', 'x', MAY)], { ...snap(t, new Date(2026, 9, 19, 20, 0)), runFolderName: 'Pixel 8 - 2026-10-19 14h30' })
+    expect(r.folder).toBe('Pixel 8 - 2026-10-19 14h30')
+    expect(t.mediaPaths()).toEqual(['Pixel 8 - 2026-10-19 14h30/2024-05-17_103000_IMG_9.jpg'])
   })
 
   it('en un disco cifrado no hay carpeta con fecha', async () => {
     const t = new MemoryTarget()
-    const r = await run(t, [src('IMG_1.jpg', 'a', MAY)], { settings: { runFolder: true }, encrypted: true })
+    const r = await run(t, [src('IMG_1.jpg', 'a', MAY)], { ...snap(t, new Date(2026, 9, 19)), encrypted: true })
     expect(r.folder).toBeUndefined()
-    expect(t.mediaPaths().every((p) => !p.startsWith('Copia'))).toBe(true)
   })
 })
 
+describe('primer uso de un disco con muchas fotos', () => {
+  it('solo relee las del disco que tienen el tamaño de alguna que se va a copiar', async () => {
+    const t = new MemoryTarget()
+    await t.writeText('Viejas/igual.jpg', 'foto que ya estaba')
+    await t.writeText('Viejas/otra.jpg', 'una foto distinta y más larga')
+    const hashed: string[] = []
+    const hash = t.hash.bind(t)
+    t.hash = async (path, onProgress, control) => (hashed.push(path), hash(path, onProgress, control))
+    const r = await run(t, [src('DCIM/IMG_1.jpg', 'foto que ya estaba', MAY)])
+    expect(hashed).toContain('Viejas/igual.jpg')
+    expect(hashed).not.toContain('Viejas/otra.jpg')
+    expect(r.duplicates).toHaveLength(1)
+  })
+})
 describe('caché de hashes del origen', () => {
   it('no recalcula el hash de archivos sin cambios', async () => {
     const store = new Map<string, { size: number; lastModified: number; hash: string }>()

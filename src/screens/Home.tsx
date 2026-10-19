@@ -193,7 +193,8 @@ export function HomeScreen() {
                 </div>
                 <h2 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">Backup en {disk!.name}</h2>
                 <p className="mt-1 text-sm text-muted">
-                  {sources.length} {sources.length === 1 ? 'carpeta' : 'carpetas'} de origen · solo se copia lo nuevo · cada copia se verifica
+                  {sources.length} {sources.length === 1 ? 'carpeta' : 'carpetas'} de origen ·{' '}
+                  {settings.runFolder && !disk!.encrypted ? 'se guarda en una carpeta "móvil - fecha y hora"' : 'solo se copia lo nuevo'} · cada copia se verifica
                 </p>
               </>
             ) : (

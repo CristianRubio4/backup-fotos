@@ -3,9 +3,11 @@ import { JobProgress } from '../components/JobProgress'
 import { Alert, Button, Card, PageHeader } from '../components/ui'
 import { formatBytes } from '../core/format'
 import type { ManifestEntry } from '../core/manifest/schema'
+import { readDiskId } from '../core/disk'
 import { ManifestStore } from '../core/manifest/store'
 import { extOf, isVideo } from '../core/media'
 import type { DiskRecord } from '../db'
+import { FsaTarget } from '../platform/fsa-target'
 import { io } from '../platform/io'
 import { activeDisk, useApp } from '../state/app'
 import { diskTarget } from '../state/keys'
@@ -22,6 +24,41 @@ function entryDate(e: ManifestEntry) {
 
 function nameOf(e: ManifestEntry) {
   return e.originalName || e.diskPath.split('/').pop()!
+}
+
+/** Un conjunto de fotos del disco: una copia ("Móvil - fecha hora") o la estructura por fecha de la raíz. */
+interface BackupSet {
+  name: string
+  entries: ManifestEntry[]
+}
+
+/**
+ * Copias del destino. Cada carpeta con su propio registro (.backup-disk-id y
+ * manifest) es una copia; sus rutas se dan desde la raíz ("Copia…/foto.jpg").
+ */
+async function loadSets(d: DiskRecord): Promise<BackupSet[]> {
+  const sets: BackupSet[] = []
+  if (d.diskId) {
+    const { store } = await ManifestStore.open(diskTarget(d), d.diskId)
+    if (store.entries().length) sets.push({ name: 'Por fecha (año/mes)', entries: store.entries() })
+  }
+  if (d.encrypted) return sets
+  const copies: BackupSet[] = []
+  for await (const [name, h] of d.handle.entries()) {
+    if (h.kind !== 'directory' || name.startsWith('.') || name.startsWith('$')) continue
+    const sub = new FsaTarget(h as FileSystemDirectoryHandle)
+    const info = await readDiskId(sub).catch(() => null)
+    if (!info) continue
+    try {
+      const { store } = await ManifestStore.open(sub, info.id)
+      copies.push({ name, entries: store.entries().map((e) => ({ ...e, diskPath: `${name}/${e.diskPath}` })) })
+    } catch {
+      // Copia con el registro dañado: se omite (sus fotos siguen en su carpeta).
+    }
+  }
+  // Las copias más recientes primero (el nombre acaba en la fecha y hora).
+  copies.sort((a, b) => b.name.slice(-16).localeCompare(a.name.slice(-16)))
+  return [...sets, ...copies]
 }
 
 /** Carga el contenido del archivo del disco para mostrarlo (descifrándolo si hace falta). */
@@ -143,7 +180,13 @@ export function ExploreScreen() {
   const { diskStates } = useApp()
   const tools = useTools()
   const disk = activeDisk()
-  const [entries, setEntries] = useState<ManifestEntry[] | null>(null)
+  const [sets, setSets] = useState<BackupSet[] | null>(null)
+  const [setName, setSetName] = useState('')
+  const entries = useMemo(() => {
+    if (!sets) return null
+    const chosen = setName ? sets.filter((s) => s.name === setName) : sets
+    return chosen.flatMap((s) => s.entries).sort((a, b) => (entryDate(b)?.getTime() ?? 0) - (entryDate(a)?.getTime() ?? 0))
+  }, [sets, setName])
   const [error, setError] = useState<string | null>(null)
   const [year, setYear] = useState('')
   const [month, setMonth] = useState('')
@@ -158,18 +201,18 @@ export function ExploreScreen() {
 
   useEffect(() => {
     if (!disk || !connected) return
-    setEntries(null)
+    setSets(null)
     setError(null)
     let d: DiskRecord
     try {
-      d = readyDisk()
+      d = readyDisk({ copies: true })
     } catch (err) {
       setError((err as Error).message)
       return
     }
-    ManifestStore.open(diskTarget(d), d.diskId!)
-      .then(({ store }) => setEntries(store.entries().sort((a, b) => (entryDate(b)?.getTime() ?? 0) - (entryDate(a)?.getTime() ?? 0))))
-      .catch((err) => setError(`No se puede leer el manifest del disco: ${(err as Error).message}`))
+    loadSets(d)
+      .then(setSets)
+      .catch((err) => setError(`No se puede leer el registro del disco: ${(err as Error).message}`))
   }, [disk?.key, connected, tools.restore])
 
   const options = useMemo(() => {
@@ -197,12 +240,12 @@ export function ExploreScreen() {
     })
   }, [entries, year, month, device, kind, status, query])
 
-  useEffect(() => setLimit(PAGE), [year, month, device, kind, status, query])
+  useEffect(() => setLimit(PAGE), [setName, year, month, device, kind, status, query])
 
   if (!disk) return <Alert tone="warn">Conecta un disco de backup para explorarlo.</Alert>
   if (!connected) return <Alert tone="warn">El disco "{disk.name}" no está conectado.</Alert>
   if (error) return <Alert tone="error">{error}</Alert>
-  if (!entries) return <p className="text-muted">Leyendo el manifest…</p>
+  if (!entries || !sets) return <p className="text-muted">Leyendo las copias del disco…</p>
 
   const toggle = (h: string) => {
     const s = new Set(selected)
@@ -210,7 +253,7 @@ export function ExploreScreen() {
     else s.add(h)
     setSelected(s)
   }
-  const sel = (entries ?? []).filter((e) => selected.has(e.hash))
+  const sel = (entries ?? []).filter((e) => selected.has(e.diskPath))
   const select = 'field py-1'
 
   return (
@@ -227,6 +270,16 @@ export function ExploreScreen() {
       <PageHeader title="Explorar el backup" subtitle={`${disk.name} · ${entries.length} archivos`} />
       <Card>
         <div className="flex flex-wrap gap-2">
+          {sets.length > 1 && (
+            <select className={select} value={setName} onChange={(e) => setSetName(e.target.value)} aria-label="Copia">
+              <option value="">Todas las copias ({sets.length})</option>
+              {sets.map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name} · {s.entries.length}
+                </option>
+              ))}
+            </select>
+          )}
           <select className={select} value={year} onChange={(e) => setYear(e.target.value)} aria-label="Año">
             <option value="">Todos los años</option>
             {options.years.map((y) => <option key={y}>{y}</option>)}
@@ -266,7 +319,7 @@ export function ExploreScreen() {
 
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
         {filtered.slice(0, limit).map((e) => (
-          <DiskThumb key={e.hash} disk={disk} entry={e} onOpen={() => setOpen(e)} selected={selected.has(e.hash)} onToggle={() => toggle(e.hash)} />
+          <DiskThumb key={e.diskPath} disk={disk} entry={e} onOpen={() => setOpen(e)} selected={selected.has(e.diskPath)} onToggle={() => toggle(e.diskPath)} />
         ))}
       </div>
       {filtered.length > limit && <Button onClick={() => setLimit(limit + PAGE)}>Ver más ({filtered.length - limit} restantes)</Button>}

@@ -1,5 +1,6 @@
 import type { ManifestStore } from '../manifest/store'
 import { isMedia } from '../media'
+import { mapPool } from '../pool'
 import type { DiskFile, ProgressFn, RunControl, Target } from '../types'
 
 const DATED_PREFIX = /^\d{4}-\d{2}-\d{2}_\d{6}_/
@@ -29,24 +30,38 @@ export async function incorporateDiskFiles(opts: {
   onPlanned?: (files: number, bytes: number) => void
   /** Incluir cualquier archivo (discos cifrados: .bin), no solo fotos y vídeos. */
   includeAll?: boolean
+  /** Solo los archivos de estos tamaños (los únicos que pueden coincidir con lo que se va a copiar). */
+  sizes?: Set<number>
+  /** Archivos que se releen a la vez. */
+  concurrency?: number
   now?: () => Date
 }): Promise<IncorporateResult> {
   const { target, store, control } = opts
   const now = opts.now ?? (() => new Date())
   const pending: DiskFile[] = []
-  for await (const f of target.walkFiles()) {
+  let seen = 0
+  for await (const f of target.walkFiles((p) => (opts.includeAll || isMedia(p)) && !store.hasDiskPath(p))) {
     await control.checkpoint()
-    if ((opts.includeAll || isMedia(f.path)) && !store.hasDiskPath(f.path) && f.size > 0) pending.push(f)
+    if (++seen % 200 === 0) opts.onProgress?.({ done: 0, total: 0, current: f.path })
+    if (f.size > 0 && (!opts.sizes || opts.sizes.has(f.size))) pending.push(f)
   }
   opts.onPlanned?.(pending.length, pending.reduce((a, f) => a + f.size, 0))
 
   const result: IncorporateResult = { added: 0, duplicatesOnDisk: [], unreadable: [] }
   let done = 0
-  for (const f of pending) {
+  // Releer es lo lento: varios a la vez (cada uno en un Worker). El registro se hace en orden.
+  const hashes = await mapPool(pending, Math.max(1, opts.concurrency ?? 1), async (f) => {
     await control.checkpoint()
-    opts.onProgress?.({ done, total: pending.length, current: f.path })
-    const hash = await target.hash(f.path, opts.onBytes ?? (() => {}), control).catch(() => null)
-    done++
+    const hash = await target.hash(f.path, opts.onBytes ?? (() => {}), control).catch((err) => {
+      if ((err as Error)?.name === 'CancelledError') throw err
+      return null
+    })
+    opts.onProgress?.({ done: ++done, total: pending.length, current: f.path })
+    return hash
+  })
+  for (let i = 0; i < pending.length; i++) {
+    const f = pending[i]
+    const hash = hashes[i]
     if (!hash) {
       result.unreadable.push(f.path)
       continue

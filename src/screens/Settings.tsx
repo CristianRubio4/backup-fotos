@@ -66,11 +66,11 @@ export function SettingsScreen() {
       <Card title="Estructura en el disco" icon={FolderTree}>
         <label className="flex items-center gap-2 py-1 text-sm">
           <input type="radio" name="runFolder" className="accent-[var(--accent)]" checked={settings.runFolder} onChange={() => saveSettings({ ...settings, runFolder: true })} />
-          Una carpeta por cada copia: <code className="text-xs">{runFolderName(new Date(), 'iPhone 15 Pro')}/…</code>
+          Una carpeta completa por cada copia: <code className="text-xs">{runFolderName(new Date(), 'iPhone 15 Pro')}/…</code>
         </label>
         <label className="flex items-center gap-2 py-1 text-sm">
           <input type="radio" name="runFolder" className="accent-[var(--accent)]" checked={!settings.runFolder} onChange={() => saveSettings({ ...settings, runFolder: false })} />
-          Por fecha de la foto: <code className="text-xs">2026/10/…</code>
+          Un solo backup por fecha, solo lo nuevo: <code className="text-xs">2026/10/…</code>
         </label>
         <Toggle
           label="Separar por dispositivo"
@@ -79,9 +79,12 @@ export function SettingsScreen() {
           onChange={(v) => saveSettings({ ...settings, layout: v ? 'per-device' : 'together' })}
         />
         <p className="mt-1 text-xs text-muted">
-          La carpeta de cada copia lleva el nombre del móvil o cámara del que vienen las fotos (se lee de las propias fotos; si no se sabe,
-          se llama "Copia") y el día y la hora. Solo contiene las fotos nuevas de ese backup. Los duplicados se detectan siempre entre todas las copias y
-          dispositivos: una foto que ya está en el disco no se vuelve a copiar. El cambio afecta a las copias nuevas.
+          <b>Una carpeta por copia:</b> cada backup crea una sola carpeta con el nombre del móvil (leído de las propias fotos; si no se sabe,
+          "Copia") y el día y la hora, y guarda dentro <b>todas</b> las fotos elegidas y su registro. No se escribe nada más en el destino. Cada
+          copia es completa e independiente, así que ocupa más espacio.
+          <br />
+          <b>Por fecha:</b> un único backup que crece: solo se copia lo que aún no está en el disco, en carpetas año/mes. Permite comprobar el
+          disco y liberar espacio desde Herramientas.
         </p>
       </Card>
 

@@ -6,7 +6,7 @@ import { ensureDiskId } from '../disk'
 import type { EntryStatus, ManifestEntry } from '../manifest/schema'
 import { ManifestStore, type ManifestRecovery } from '../manifest/store'
 import { extOf, isVideo } from '../media'
-import { datedName, dominantCamera, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
+import { datedName, dominantCamera, joinPath, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
 import { mapPool } from '../pool'
 import { incorporateDiskFiles } from './incorporate'
 import type { Device, Settings } from '../settings'
@@ -107,6 +107,13 @@ export interface EngineInput {
   hashCache?: HashCache
   /** Disco cifrado: nombres aleatorios en el disco, sin fecha ni nombre original. */
   encrypted?: boolean
+  /**
+   * Con "una carpeta por copia": crea (o abre) la carpeta de esta copia dentro
+   * del destino y la devuelve como destino. Sin ella, se copia en la raíz.
+   */
+  openRunFolder?: (name: string) => Promise<Target>
+  /** Nombre de carpeta de una copia anterior (para "Copiar igualmente" en la misma copia). */
+  runFolderName?: string
   /** Archivos que se hashean/analizan a la vez (uno por Worker). La copia siempre es de uno en uno. */
   concurrency?: number
   now?: () => Date
@@ -144,7 +151,10 @@ interface Analysis {
 }
 
 export async function runBackup(input: EngineInput): Promise<BackupReport> {
-  const { target, hasher, control, settings, device } = input
+  const { hasher, control, settings, device } = input
+  /** Destino real: la carpeta elegida o, con una carpeta por copia, la de esta copia. */
+  let target = input.target
+  const snapshot = settings.runFolder && !input.encrypted && !!input.openRunFolder
   const filters = settings.filters
   const force = input.force ?? new Set<string>()
   const fat32Limit = input.fat32Limit ?? FAT32_MAX_FILE
@@ -224,8 +234,40 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
   let diskOk = true
 
   try {
-    // ---- Disco y manifest ----
     if (!(await target.ping())) throw new DiskDisconnectedError()
+
+    // ---- Escaneo ----
+    setPhase('scan', 0)
+    const scan = await input.scan((count) => {
+      progress.phaseDone = count
+      emit()
+    })
+    report.scanned = scan.files.length
+    report.ignored = { count: scan.ignored.length, sample: scan.ignored.slice(0, 50) }
+    for (const u of scan.unreadable ?? []) {
+      report.errors.push({ name: u.relPath.split('/').pop() ?? u.relPath, sourcePath: u.relPath, size: 0, reason: `No se ha podido leer: ${u.reason}` })
+      counters.errors++
+    }
+
+    const files: SourceFile[] = []
+    for (const f of scan.files) {
+      if (f.size === 0 && filters.corrupt && !force.has(f.relPath)) discardItem(f, 'corrupt', 'Archivo vacío (0 bytes)')
+      else files.push(f)
+    }
+
+    // ---- Carpeta de esta copia ----
+    // "iPhone 15 Pro - 2026-10-19 14h30": se crea dentro del destino y TODO va dentro
+    // (fotos y archivos de control). Cada copia es completa e independiente.
+    if (snapshot) {
+      const name = input.runFolderName ?? runFolderName(new Date(report.startedAt), await guessCamera(files, input.readExif, concurrency))
+      report.folder = name
+      const parent = target
+      target = await input.openRunFolder!(name).catch(async (err) => {
+        throw (await parent.ping()) ? err : new DiskDisconnectedError()
+      })
+    }
+
+    // ---- Disco y manifest ----
     const disk = await ensureDiskId(target, input.diskName, now())
     report.diskId = disk.id
     const opened = await ManifestStore.open(target, disk.id, now())
@@ -256,15 +298,21 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     }
 
     // ---- Primer uso de un disco con fotos previas: incorporarlas al manifest ----
-    if (opened.recovery.source === 'new' && !input.encrypted) {
+    // Solo se releen las del disco con el mismo tamaño que alguna de las que se van a
+    // copiar (las demás no pueden ser iguales): en un disco lleno de fotos, mucho más rápido.
+    if (!snapshot && opened.recovery.source === 'new' && !input.encrypted) {
       setPhase('disk', 0)
+      const sizes = new Set(files.map((f) => f.size))
       const inc = await incorporateDiskFiles({
         target,
         store: manifest,
         control,
-        onPlanned: (files, bytes) => {
-          progress.phaseTotal = files
+        sizes,
+        concurrency,
+        onPlanned: (n, bytes) => {
+          progress.phaseTotal = n
           progress.totalBytes += bytes
+          emit(true)
         },
         onProgress: (p) => {
           progress.phaseDone = p.done
@@ -276,25 +324,6 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       })
       report.incorporated = inc.added
       if (inc.added > 0) await manifest.flushJournal()
-    }
-
-    // ---- Escaneo ----
-    setPhase('scan', 0)
-    const scan = await input.scan((count) => {
-      progress.phaseDone = count
-      emit()
-    })
-    report.scanned = scan.files.length
-    report.ignored = { count: scan.ignored.length, sample: scan.ignored.slice(0, 50) }
-    for (const u of scan.unreadable ?? []) {
-      report.errors.push({ name: u.relPath.split('/').pop() ?? u.relPath, sourcePath: u.relPath, size: 0, reason: `No se ha podido leer: ${u.reason}` })
-      counters.errors++
-    }
-
-    const files: SourceFile[] = []
-    for (const f of scan.files) {
-      if (f.size === 0 && filters.corrupt && !force.has(f.relPath)) discardItem(f, 'corrupt', 'Archivo vacío (0 bytes)')
-      else files.push(f)
     }
 
     // ---- Live Photos ----
@@ -425,12 +454,6 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     progress.totalBytes = baseBytes + sum(preHash) + sum(toCopy.map((h) => h.file)) * copyFactor
     progress.doneBytes = Math.min(progress.doneBytes, progress.totalBytes)
 
-    // Carpeta de esta copia: "iPhone 15 Pro - 2026-10-19 14h30" (el móvil se saca del EXIF de las fotos)
-    // o "Copia 2026-10-19 14h30". En un disco cifrado los nombres son aleatorios: no hay carpeta con fecha.
-    if (settings.runFolder && !input.encrypted) {
-      report.folder = runFolderName(new Date(report.startedAt), dominantCamera(toCopy.map((h) => analysis.get(h.file)!.exif)))
-    }
-
     // ---- Copia y verificación ----
     setPhase('copy', toCopy.length)
     const reserved = new Set<string>()
@@ -478,7 +501,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       return (await target.hash(candidate, onBytes, control)) === known.hash ? 'same' : 'taken'
     }
 
-    /** "Copia 2026-10-19 14h30/…" o año/mes; con "una carpeta por dispositivo", además el nombre del dispositivo. */
+    /** Con "una carpeta por dispositivo", una subcarpeta con su nombre. */
     const deviceDir = settings.layout === 'per-device' ? device.name : null
 
     /** Elige la ruta en el disco: junto a su foto si es el vídeo de una Live Photo; si no, año/mes + nombre con fecha. */
@@ -503,10 +526,10 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       }
       if (state === 'taken') {
         const { date } = pickDate(a.exif.date, f.lastModified, now())
-        const dir = targetDir({ runFolder: report.folder ?? null, device: deviceDir, date })
+        const dir = targetDir({ byDate: !snapshot, device: deviceDir, date })
         const base = datedName(f.name, date, settings.dateInName)
         for (let n = 0; state === 'taken'; n++) {
-          path = `${dir}/${withSuffix(base, n)}`
+          path = joinPath(dir, withSuffix(base, n))
           state = await tryPath(path, f, blob, known)
         }
       }
@@ -645,8 +668,29 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
         }
       }
     }
+    // Con una carpeta por copia, las rutas del informe se dan desde la carpeta elegida ("iPhone… - 2026…/foto.jpg").
+    if (report.folder) {
+      for (const list of [report.copied, report.alreadyOnDisk, report.duplicates, report.unverified, report.reduced]) {
+        for (const it of list) if (it.diskPath) it.diskPath = joinPath(report.folder, it.diskPath)
+      }
+    }
     report.finishedAt = now().toISOString()
     emit(true)
   }
   return report
+}
+
+/** Móvil o cámara de las fotos, leyendo el EXIF de una muestra (para nombrar la carpeta antes de copiar). */
+async function guessCamera(files: SourceFile[], readExif: ExifReader, concurrency: number) {
+  const photos = files.filter((f) => !isVideo(f.name))
+  const step = Math.max(1, Math.floor(photos.length / 40))
+  const sample = photos.filter((_, i) => i % step === 0).slice(0, 40)
+  const exifs = await mapPool(sample, concurrency, async (f) => {
+    try {
+      return await readExif(await f.getFile())
+    } catch {
+      return { date: null } as ExifInfo
+    }
+  })
+  return dominantCamera(exifs)
 }
