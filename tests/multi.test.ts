@@ -100,7 +100,8 @@ describe('una carpeta por copia', () => {
       counted('DCIM/IMG_2.jpg', 'otra foto'),
       counted('DCIM/VID_1.mp4', 'un vídeo'),
     ]
-    const r = await run(t, files, { ...snap(t, new Date(2026, 9, 19, 12, 0)), readOnce: true })
+    // Como con el móvil por cable: origen lento, sin leer fotos de muestra para adivinar el nombre.
+    const r = await run(t, files, { ...snap(t, new Date(2026, 9, 19, 12, 0)), readOnce: true, slowSource: true })
     expect(r.outcome).toBe('completed')
     expect(r.copied.map((c) => c.sourcePath)).toEqual(['DCIM/IMG_1.jpg', 'DCIM/IMG_2.jpg', 'DCIM/VID_1.mp4'])
     expect(r.duplicates.map((d) => d.sourcePath)).toEqual(['WhatsApp/IMG-WA1.jpg'])
