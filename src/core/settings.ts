@@ -29,6 +29,8 @@ export interface Settings {
   saveEvery: number
   /** Todo junto (año/mes) o una subcarpeta por dispositivo (Móvil de Ana/año/mes). */
   layout: 'together' | 'per-device'
+  /** Cada backup en su propia carpeta "Copia 2026-10-19 14h30" (en vez de año/mes). */
+  runFolder: boolean
   /** Avisar si un disco lleva más de estos días sin backup. */
   staleDays: number
   /** Recordar comprobar la integridad del disco cada estos meses. */
@@ -57,6 +59,7 @@ export const DEFAULT_SETTINGS: Settings = {
   dateInName: true,
   saveEvery: 20,
   layout: 'together',
+  runFolder: true,
   staleDays: 30,
   integrityMonths: 6,
   zipBatchMB: typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 300 : 1000,

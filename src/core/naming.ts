@@ -39,6 +39,22 @@ export function folderFor(date: Date | null) {
   return date ? `${date.getFullYear()}/${pad(date.getMonth() + 1)}` : NO_DATE_DIR
 }
 
+/** Carpeta de cada backup: "Copia 2026-10-19 14h30" (ordenable y sin ":", que Windows no admite). */
+export function runFolderName(d: Date) {
+  return `Copia ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}h${pad(d.getMinutes())}`
+}
+
+/**
+ * Carpeta de destino de un archivo:
+ *  - con carpeta por copia: "Copia 2026-10-19 14h30/" (+ dispositivo),
+ *  - si no: año/mes (con el dispositivo delante si se separan).
+ */
+export function targetDir(opts: { runFolder: string | null; device: string | null; date: Date | null }) {
+  const device = opts.device ? sanitizeName(opts.device) : null
+  if (opts.runFolder) return device ? `${opts.runFolder}/${device}` : opts.runFolder
+  return (device ? `${device}/` : '') + folderFor(opts.date)
+}
+
 /**
  * Quita caracteres no válidos en Windows / FAT / exFAT y los puntos o
  * espacios finales, que Windows no admite.

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { EncryptionCard } from '../components/EncryptionCard'
 import { Bell, Copy, Filter, FolderTree, Smartphone } from 'lucide-react'
 import { Button, Card, PageHeader, Toggle } from '../components/ui'
+import { runFolderName } from '../core/naming'
 import { DEFAULT_FILTERS, type FilterSettings } from '../core/settings'
 import { useApp } from '../state/app'
 
@@ -64,16 +65,22 @@ export function SettingsScreen() {
 
       <Card title="Estructura en el disco" icon={FolderTree}>
         <label className="flex items-center gap-2 py-1 text-sm">
-          <input type="radio" name="layout" className="accent-[var(--accent)]" checked={settings.layout === 'together'} onChange={() => saveSettings({ ...settings, layout: 'together' })} />
-          Todo junto: <code className="text-xs">2026/10/…</code>
+          <input type="radio" name="runFolder" className="accent-[var(--accent)]" checked={settings.runFolder} onChange={() => saveSettings({ ...settings, runFolder: true })} />
+          Una carpeta por cada copia: <code className="text-xs">{runFolderName(new Date())}/…</code>
         </label>
         <label className="flex items-center gap-2 py-1 text-sm">
-          <input type="radio" name="layout" className="accent-[var(--accent)]" checked={settings.layout === 'per-device'} onChange={() => saveSettings({ ...settings, layout: 'per-device' })} />
-          Una carpeta por dispositivo: <code className="text-xs">{device.name || 'Móvil de Ana'}/2026/10/…</code>
+          <input type="radio" name="runFolder" className="accent-[var(--accent)]" checked={!settings.runFolder} onChange={() => saveSettings({ ...settings, runFolder: false })} />
+          Por fecha de la foto: <code className="text-xs">2026/10/…</code>
         </label>
+        <Toggle
+          label="Separar por dispositivo"
+          hint={`Añade una carpeta con el nombre del dispositivo (${device.name || 'Móvil de Ana'}).`}
+          checked={settings.layout === 'per-device'}
+          onChange={(v) => saveSettings({ ...settings, layout: v ? 'per-device' : 'together' })}
+        />
         <p className="mt-1 text-xs text-muted">
-          En ambos casos los duplicados se detectan entre todos los dispositivos: una foto que ya copió otro dispositivo no se vuelve a copiar.
-          El cambio afecta a las copias nuevas.
+          En la carpeta de cada copia solo están las fotos nuevas de ese backup. Los duplicados se detectan siempre entre todas las copias y
+          dispositivos: una foto que ya está en el disco no se vuelve a copiar. El cambio afecta a las copias nuevas.
         </p>
       </Card>
 

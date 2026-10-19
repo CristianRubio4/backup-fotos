@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Features } from '../src/core/analysis/classify'
 import { planCompat, splitBatches } from '../src/core/compat/plan'
 import { noControl } from '../src/core/control'
-import { DEFAULT_SETTINGS } from '../src/core/settings'
+import { DEFAULT_SETTINGS } from './test-settings'
 import { src, testHasher } from './fakes'
 import { byteAnalyzer, loadSet, nodeExif } from './fixture-set'
 

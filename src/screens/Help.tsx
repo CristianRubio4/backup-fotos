@@ -28,8 +28,9 @@ export function HelpScreen() {
       <Section title="Cómo funciona">
         <p>
           La app recorre la carpeta de fotos, calcula una huella (hash SHA-256) de cada archivo y copia al disco solo lo que aún no está.
-          Las copias se ordenan en carpetas <b>año/mes</b> según la fecha de la foto (EXIF); si no la tiene, la fecha del archivo; y si
-          tampoco es fiable, van a <b>Sin fecha</b>.
+          Cada backup guarda lo nuevo en su propia carpeta, con el día y la hora de la copia (<b>Copia 2026-10-19 14h30</b>). Si lo
+          prefieres, en Ajustes puedes ordenarlas en carpetas <b>año/mes</b> según la fecha de la foto. Al terminar, en el informe pulsa{' '}
+          <b>Copiados</b> para ver una a una las fotos de esa copia.
         </p>
         <p>
           Cada copia se relee del disco y se compara con el original. En la raíz del disco se guarda <code>.backup-manifest.json</code>,

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { runBackup, type EngineInput } from '../src/core/backup/engine'
 import { Controller } from '../src/core/control'
 import { MANIFEST_FILE, parseManifest } from '../src/core/manifest/schema'
-import { DEFAULT_SETTINGS, type Settings } from '../src/core/settings'
+import { DEFAULT_SETTINGS, type Settings } from './test-settings'
 import type { HashCache, SourceFile } from '../src/core/types'
 import { MemoryTarget, src, testHasher } from './fakes'
 
@@ -41,6 +41,32 @@ describe('varios dispositivos', () => {
     await run(t, [src('IMG_1.jpg', 'a', MAY)], { device: { id: 'm', name: 'Móvil de Ana' }, settings: { layout: 'per-device' } })
     await run(t, [src('IMG_2.jpg', 'bb', MAY)], { device: { id: 'p', name: 'Portátil: casa' }, settings: { layout: 'per-device' } })
     expect(t.mediaPaths()).toEqual(['Móvil de Ana/2024/05/2024-05-17_103000_IMG_1.jpg', 'Portátil_ casa/2024/05/2024-05-17_103000_IMG_2.jpg'])
+  })
+})
+
+describe('una carpeta por copia', () => {
+  it('cada backup va a "Copia AAAA-MM-DD HHhMM" y solo con lo nuevo', async () => {
+    const t = new MemoryTarget()
+    const r1 = await run(t, [src('IMG_1.jpg', 'a', MAY)], { settings: { runFolder: true }, now: () => new Date(2026, 9, 19, 9, 5, 30) })
+    const r2 = await run(t, [src('IMG_1.jpg', 'a', MAY), src('IMG_2.jpg', 'bb', MAY)], { settings: { runFolder: true }, now: () => new Date(2026, 9, 19, 18, 42) })
+    expect(r1.folder).toBe('Copia 2026-10-19 09h05')
+    expect(r2.folder).toBe('Copia 2026-10-19 18h42')
+    expect(r2.duplicates).toHaveLength(1)
+    expect(t.mediaPaths()).toEqual(['Copia 2026-10-19 09h05/2024-05-17_103000_IMG_1.jpg', 'Copia 2026-10-19 18h42/2024-05-17_103000_IMG_2.jpg'])
+    expect(r2.copied[0].diskPath).toBe('Copia 2026-10-19 18h42/2024-05-17_103000_IMG_2.jpg')
+  })
+
+  it('con "una carpeta por dispositivo", el dispositivo va dentro de la copia', async () => {
+    const t = new MemoryTarget()
+    await run(t, [src('IMG_1.jpg', 'a', MAY)], { device: { id: 'm', name: 'Móvil de Ana' }, settings: { runFolder: true, layout: 'per-device' }, now: () => new Date(2026, 9, 19, 9, 5) })
+    expect(t.mediaPaths()).toEqual(['Copia 2026-10-19 09h05/Móvil de Ana/2024-05-17_103000_IMG_1.jpg'])
+  })
+
+  it('en un disco cifrado no hay carpeta con fecha', async () => {
+    const t = new MemoryTarget()
+    const r = await run(t, [src('IMG_1.jpg', 'a', MAY)], { settings: { runFolder: true }, encrypted: true })
+    expect(r.folder).toBeUndefined()
+    expect(t.mediaPaths().every((p) => !p.startsWith('Copia'))).toBe(true)
   })
 })
 

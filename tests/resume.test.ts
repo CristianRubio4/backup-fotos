@@ -3,7 +3,7 @@ import { runBackup, type EngineInput } from '../src/core/backup/engine'
 import { Controller } from '../src/core/control'
 import { readDiskId } from '../src/core/disk'
 import { MANIFEST_FILE, parseManifest } from '../src/core/manifest/schema'
-import { DEFAULT_SETTINGS } from '../src/core/settings'
+import { DEFAULT_SETTINGS } from './test-settings'
 import { CancelledError, type SourceFile } from '../src/core/types'
 import { MemoryTarget, src, testHasher } from './fakes'
 

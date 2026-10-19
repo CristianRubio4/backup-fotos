@@ -190,7 +190,7 @@ export function CompatScreen() {
                 <p>Guarda el ZIP en la carpeta de backup del disco y descomprímelo allí.</p>
               )}
               <p className="mt-2">
-                Los archivos conservan su fecha original y se ordenan en carpetas año/mes. Cuando uses el disco en Chrome o Edge, pulsa
+                Los archivos conservan su fecha original y van en la carpeta de esta copia (o en año/mes, según Ajustes). Cuando uses el disco en Chrome o Edge, pulsa
                 <b> Herramientas → Incorporar archivos sueltos</b> para registrarlos y verificarlos.
               </p>
             </div>

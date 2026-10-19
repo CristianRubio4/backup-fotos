@@ -1,10 +1,13 @@
+import { AlertOctagon, Ban, ClipboardCheck, Copy, Files, HardDrive, Images, ShieldQuestion } from 'lucide-react'
+import { useCallback, useMemo, useRef } from 'react'
+import { Gallery, type BlobGetter } from '../components/Gallery'
 import { Thumb } from '../components/Thumb'
-import { AlertOctagon, Ban, ClipboardCheck, Copy, Files, HardDrive, ShieldQuestion } from 'lucide-react'
 import { Alert, Button, Card, PageHeader, Stat } from '../components/ui'
 import type { DiscardCategory } from '../core/analysis/classify'
 import type { BackupReport, Outcome, ReportItem } from '../core/backup/engine'
 import { formatBytes, formatDuration, plural } from '../core/format'
 import { scannedFile, useApp } from '../state/app'
+import { diskTarget, isLocked, useKeys } from '../state/keys'
 
 const OUTCOME: Record<Outcome, { tone: 'ok' | 'warn' | 'error'; text: string }> = {
   completed: { tone: 'ok', text: 'Backup terminado.' },
@@ -106,6 +109,59 @@ function Discarded({ items }: { items: ReportItem[] }) {
   )
 }
 
+/** Fotos y vídeos copiados en este backup, para verlos uno a uno. */
+function Copied({ report }: { report: BackupReport }) {
+  const { disks, diskStates } = useApp()
+  useKeys()
+  const items = useMemo(() => [...report.copied, ...report.alreadyOnDisk], [report])
+  const disk = disks.find((d) => d.diskId && d.diskId === report.diskId)
+  const diskReady = !!disk && diskStates[disk.key]?.state === 'connected' && !(disk.encrypted && isLocked(disk))
+
+  // El registro del disco se renueva con cada sondeo: se guarda en una ref para
+  // no recargar las miniaturas cada 3 segundos.
+  const diskRef = useRef(disk)
+  diskRef.current = disk
+
+  // Primero del origen (al momento, sin tocar el disco); si ya no está, del disco.
+  const getBlob = useCallback<BlobGetter>(
+    async (it) => {
+      const f = scannedFile(it.sourcePath)
+      if (f) {
+        try {
+          return await f.getFile()
+        } catch {
+          // El origen ya no está (móvil desconectado…): se lee del disco.
+        }
+      }
+      const d = diskRef.current
+      if (!d || !diskReady || !it.diskPath) return null
+      return diskTarget(d).readFile(it.diskPath)
+    },
+    [diskReady],
+  )
+
+  if (items.length === 0) return null
+  return (
+    <div id="copiados" className="scroll-mt-4">
+      <Card
+        title={`Copiados (${items.length})`}
+        icon={Images}
+        description={
+          report.folder ? (
+            <>
+              Guardados en la carpeta <b className="text-fg">{report.folder}</b> del disco. Toca una foto para verla.
+            </>
+          ) : (
+            'Toca una foto para verla a tamaño completo.'
+          )
+        }
+      >
+        <Gallery items={items} getBlob={getBlob} />
+      </Card>
+    </div>
+  )
+}
+
 function ManifestNotice({ report }: { report: BackupReport }) {
   const m = report.manifest
   if (!m) return null
@@ -142,7 +198,14 @@ export function ReportScreen() {
 
       <Card title="Resumen" icon={ClipboardCheck}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <Stat label="Copiados" value={report.copied.length + report.alreadyOnDisk.length} tone="ok" icon={Copy} />
+          <Stat
+            label="Copiados"
+            value={report.copied.length + report.alreadyOnDisk.length}
+            tone="ok"
+            icon={Copy}
+            hint={report.copied.length + report.alreadyOnDisk.length ? 'Ver fotos →' : undefined}
+            onClick={report.copied.length + report.alreadyOnDisk.length ? () => document.getElementById('copiados')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : undefined}
+          />
           <Stat label="Duplicados omitidos" value={report.duplicates.length} icon={Files} />
           <Stat label="Descartados" value={report.discarded.length} tone={report.discarded.length ? 'warn' : undefined} icon={Ban} />
           <Stat label="No verificados" value={report.unverified.length} tone={report.unverified.length ? 'warn' : undefined} icon={ShieldQuestion} />
@@ -186,6 +249,8 @@ export function ReportScreen() {
         </Alert>
       )}
 
+      <Copied report={report} />
+
       <Discarded items={report.discarded} />
 
       <div className="space-y-2">
@@ -193,7 +258,7 @@ export function ReportScreen() {
         <ItemList title="No copiados por el límite de 4 GB de FAT32" items={report.fat32} open />
         <ItemList title="Posibles versiones reducidas" items={report.reduced} showPath />
         <ItemList title="No verificados (copiados, pero no se ha podido comprobar su contenido)" items={report.unverified} showPath />
-        <ItemList title="Copiados" items={report.copied} showPath />
+        <ItemList title="Lista de copiados (origen → disco)" items={report.copied} showPath />
         <ItemList title="Ya estaban en el disco (backup anterior interrumpido)" items={report.alreadyOnDisk} showPath />
         <ItemList title="Duplicados omitidos" items={report.duplicates} showPath />
         <ItemList title="Ignorados (no son fotos ni vídeos)" items={report.ignored.sample.map((p) => ({ name: p, sourcePath: p, size: 0 }))} />

@@ -7,14 +7,14 @@ import { findLivePhotos } from '../analysis/pairing'
 import type { ReportItem } from '../backup/engine'
 import type { ManifestEntry } from '../manifest/schema'
 import { extOf, isVideo } from '../media'
-import { datedName, folderFor, pickDate, sanitizeName, toLocalIso, withSuffix } from '../naming'
+import { datedName, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
 import type { Device, Settings } from '../settings'
 import { CancelledError, type Analyzer, type ExifInfo, type ExifReader, type Hasher, type RunControl, type SourceFile } from '../types'
 
 export interface CompatItem {
   file: SourceFile
   hash: string
-  /** Ruta dentro del ZIP (la misma estructura que en el disco: año/mes/nombre con fecha). */
+  /** Ruta dentro del ZIP (la misma estructura que en el disco: carpeta de la copia o año/mes, y nombre con fecha). */
   zipPath: string
   entry: ManifestEntry
   /** Para mantener juntas las Live Photos en el mismo lote. */
@@ -143,7 +143,8 @@ export async function planCompat(opts: {
   // ---- Rutas en el ZIP ----
   const used = new Set<string>()
   const placed = new Map<SourceFile, string>()
-  const devicePrefix = settings.layout === 'per-device' ? `${sanitizeName(device.name)}/` : ''
+  const runFolder = settings.runFolder ? runFolderName(now()) : null
+  const deviceDir = settings.layout === 'per-device' ? device.name : null
   const ordered = [...analysis.keys()].sort((a, b) => Number(photoOfVideo.has(a)) - Number(photoOfVideo.has(b)))
   for (const f of ordered) {
     const a = analysis.get(f)!
@@ -159,7 +160,7 @@ export async function planCompat(opts: {
     if (!zipPath) {
       const { date } = pickDate(a.exif.date, f.lastModified, now())
       const base = datedName(f.name, date, settings.dateInName)
-      const dir = devicePrefix + folderFor(date)
+      const dir = targetDir({ runFolder, device: deviceDir, date })
       for (let n = 0; !zipPath; n++) {
         const p = `${dir}/${withSuffix(base, n)}`
         if (!used.has(p.toLowerCase())) zipPath = p

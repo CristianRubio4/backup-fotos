@@ -132,16 +132,25 @@ export function ProgressRing({ value, size = 168, children }: { value: number; s
   )
 }
 
-export function Stat({ label, value, tone, icon: Icon }: { label: string; value: ReactNode; tone?: 'ok' | 'warn' | 'error' | 'muted'; icon?: LucideIcon }) {
+export function Stat({ label, value, tone, icon: Icon, onClick, hint }: { label: string; value: ReactNode; tone?: 'ok' | 'warn' | 'error' | 'muted'; icon?: LucideIcon; onClick?: () => void; hint?: string }) {
   const color = tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : tone === 'error' ? 'text-danger' : 'text-fg'
-  return (
-    <div className="rounded-2xl border border-line bg-surface-2/60 px-4 py-3">
+  const body = (
+    <>
       <div className="flex items-center gap-1.5 text-xs text-muted">
         {Icon && <Icon size={13} aria-hidden />}
         {label}
       </div>
       <div className={`mt-1 text-2xl font-semibold tracking-tight tabular-nums ${color}`}>{value}</div>
-    </div>
+      {hint && <div className="mt-0.5 text-xs font-medium text-accent-strong">{hint}</div>}
+    </>
+  )
+  const cls = 'rounded-2xl border border-line bg-surface-2/60 px-4 py-3 text-left'
+  return onClick ? (
+    <button type="button" onClick={onClick} className={`${cls} transition hover:border-accent/50 hover:bg-accent-soft/40`}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls}>{body}</div>
   )
 }
 

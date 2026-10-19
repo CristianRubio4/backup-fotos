@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { runBackup } from '../src/core/backup/engine'
 import { Controller } from '../src/core/control'
 import { MANIFEST_BAK, MANIFEST_FILE, parseManifest } from '../src/core/manifest/schema'
-import { DEFAULT_SETTINGS, type Settings } from '../src/core/settings'
+import { DEFAULT_SETTINGS, type Settings } from './test-settings'
 import type { SourceFile } from '../src/core/types'
 import { MemoryTarget, src, testHasher } from './fakes'
 

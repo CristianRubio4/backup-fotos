@@ -1,6 +1,8 @@
-import { AlertTriangle, Check, FolderPlus, FolderOpen, HardDrive, HardDriveDownload, Images, Lock, MoreHorizontal, Plus, ShieldCheck, Smartphone } from 'lucide-react'
+import { AlertTriangle, Check, FolderPlus, FolderOpen, HardDrive, HardDriveDownload, Images, Lock, Pencil, Plus, ShieldCheck, Smartphone, Trash2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
+import { Dialog } from '../components/Dialog'
 import { statusLabel } from '../components/DiskBadge'
+import { Menu, MenuItem } from '../components/Menu'
 import { Alert, Badge, Button, Card, PageHeader, StatusDot } from '../components/ui'
 import { UnlockDisk } from '../components/UnlockDisk'
 import { daysSince, formatBytes, formatDateTime, plural } from '../core/format'
@@ -23,38 +25,65 @@ function ago(iso: string) {
   return d === 0 ? 'hoy' : d === 1 ? 'ayer' : `hace ${d} días`
 }
 
-function DiskMenu({ disk }: { disk: DiskRecord }) {
-  const { running, renameDisk, removeDisk } = useApp()
-  const [open, setOpen] = useState(false)
+function DiskMenu({ disk, canUse, active }: { disk: DiskRecord; canUse: boolean; active: boolean }) {
+  const { running, renameDisk, removeDisk, setActiveDisk } = useApp()
+  const [dialog, setDialog] = useState<'rename' | 'forget' | null>(null)
+  const close = () => setDialog(null)
   return (
-    <div className="relative">
-      <button className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg" aria-label={`Opciones de ${disk.name}`} aria-expanded={open} onClick={() => setOpen(!open)} disabled={running}>
-        <MoreHorizontal size={18} />
-      </button>
-      {open && (
-        <div className="animate-rise absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-[var(--shadow-pop)]" onMouseLeave={() => setOpen(false)}>
-          <button
-            className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2"
-            onClick={() => {
-              setOpen(false)
-              const n = prompt('Nuevo nombre del disco', disk.name)
-              if (n) void renameDisk(disk.key, n)
-            }}
-          >
-            Renombrar
-          </button>
-          <button
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-surface-2"
-            onClick={() => {
-              setOpen(false)
-              if (confirm(`¿Olvidar "${disk.name}" en esta app? No se borra nada del disco; podrás volver a añadirlo.`)) void removeDisk(disk.key)
-            }}
-          >
-            Olvidar en esta app
-          </button>
+    <>
+      <Menu label={`Opciones de ${disk.name}`} disabled={running}>
+        {canUse && !active && (
+          <MenuItem icon={Check} onSelect={() => void setActiveDisk(disk.key)}>
+            Usar como destino
+          </MenuItem>
+        )}
+        <MenuItem icon={Pencil} onSelect={() => setDialog('rename')}>
+          Renombrar
+        </MenuItem>
+        <MenuItem icon={Trash2} danger onSelect={() => setDialog('forget')}>
+          Olvidar en esta app
+        </MenuItem>
+      </Menu>
+
+      <Dialog open={dialog === 'rename'} onClose={close} title="Renombrar disco">
+        <form
+          className="p-5"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const n = String(new FormData(e.currentTarget).get('name') ?? '').trim()
+            if (n && n !== disk.name) void renameDisk(disk.key, n)
+            close()
+          }}
+        >
+          <h2 className="text-lg font-semibold tracking-tight">Renombrar disco</h2>
+          <p className="mt-1 text-sm text-muted">El nombre se guarda también en el propio disco, así lo reconocerás en cualquier equipo.</p>
+          <input name="name" className="field mt-4 w-full" defaultValue={disk.name} maxLength={60} autoFocus required onFocus={(e) => e.currentTarget.select()} />
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="ghost" onClick={close}>Cancelar</Button>
+            <Button variant="primary" type="submit">Guardar</Button>
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog open={dialog === 'forget'} onClose={close} title="Olvidar disco">
+        <div className="p-5">
+          <h2 className="text-lg font-semibold tracking-tight">¿Olvidar "{disk.name}"?</h2>
+          <p className="mt-1 text-sm text-muted">Deja de aparecer en esta app. <b>No se borra nada del disco</b>: puedes volver a añadirlo cuando quieras y la app lo reconocerá.</p>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="ghost" onClick={close} autoFocus>Cancelar</Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                close()
+                void removeDisk(disk.key)
+              }}
+            >
+              Olvidar
+            </Button>
+          </div>
         </div>
-      )}
-    </div>
+      </Dialog>
+    </>
   )
 }
 
@@ -68,7 +97,7 @@ function DiskRow({ disk, active, showUse }: { disk: DiskRecord; active: boolean;
   const tone = status?.state === 'connected' ? 'ok' : status?.state === 'needs-permission' ? 'warn' : status ? 'off' : 'pending'
 
   return (
-    <li className={`cv-auto rounded-2xl border p-3 transition ${active ? 'border-accent/50 bg-accent-soft/40' : 'border-line'}`}>
+    <li className={`rounded-2xl border p-3 transition ${active ? 'border-accent/50 bg-accent-soft/40' : 'border-line'}`}>
       <div className="flex items-center gap-3">
         <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${status?.state === 'connected' ? 'bg-accent-soft text-accent-strong' : 'bg-surface-2 text-subtle'}`}>
           {disk.encrypted ? <Lock size={18} aria-hidden /> : <HardDrive size={18} aria-hidden />}
@@ -88,7 +117,7 @@ function DiskRow({ disk, active, showUse }: { disk: DiskRecord; active: boolean;
         </div>
         {status?.state === 'needs-permission' && <Button size="sm" variant="primary" onClick={() => grantDisk(disk.key)}>Permitir</Button>}
         {showUse && !active && status?.state === 'connected' && <Button size="sm" onClick={() => setActiveDisk(disk.key)}>Usar este</Button>}
-        <DiskMenu disk={disk} />
+        <DiskMenu disk={disk} active={active} canUse={status?.state === 'connected'} />
       </div>
       {disk.encrypted && status?.state === 'connected' && isLocked(disk) && <UnlockDisk disk={disk} />}
     </li>

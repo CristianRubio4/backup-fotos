@@ -6,7 +6,7 @@ import { ensureDiskId } from '../disk'
 import type { EntryStatus, ManifestEntry } from '../manifest/schema'
 import { ManifestStore, type ManifestRecovery } from '../manifest/store'
 import { extOf, isVideo } from '../media'
-import { datedName, folderFor, pickDate, sanitizeName, toLocalIso, withSuffix } from '../naming'
+import { datedName, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
 import { mapPool } from '../pool'
 import { incorporateDiskFiles } from './incorporate'
 import type { Device, Settings } from '../settings'
@@ -68,6 +68,8 @@ export interface BackupReport {
   incorporated: number
   bytesCopied: number
   manifest: ManifestRecovery | null
+  /** Carpeta de esta copia en el disco ("Copia 2026-10-19 14h30"), si se usa una por backup. */
+  folder?: string
 }
 
 export interface ScanResult {
@@ -170,6 +172,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     bytesCopied: 0,
     manifest: null,
   }
+  // En un disco cifrado los nombres son aleatorios: no hay carpetas con fecha.
+  if (settings.runFolder && !input.encrypted) report.folder = runFolderName(new Date(report.startedAt))
 
   // ---- Progreso ----
   const counters: Counters = { copied: 0, duplicates: 0, discarded: 0, unverified: 0, errors: 0 }
@@ -470,8 +474,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       return (await target.hash(candidate, onBytes, control)) === known.hash ? 'same' : 'taken'
     }
 
-    /** Con "una carpeta por dispositivo": Móvil de Ana/2026/10/… */
-    const devicePrefix = settings.layout === 'per-device' ? `${sanitizeName(device.name)}/` : ''
+    /** "Copia 2026-10-19 14h30/…" o año/mes; con "una carpeta por dispositivo", además el nombre del dispositivo. */
+    const deviceDir = settings.layout === 'per-device' ? device.name : null
 
     /** Elige la ruta en el disco: junto a su foto si es el vídeo de una Live Photo; si no, año/mes + nombre con fecha. */
     const choosePath = async (f: SourceFile, a: Analysis, blob: Blob, known: { hash: string | null }) => {
@@ -495,7 +499,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       }
       if (state === 'taken') {
         const { date } = pickDate(a.exif.date, f.lastModified, now())
-        const dir = devicePrefix + folderFor(date)
+        const dir = targetDir({ runFolder: report.folder ?? null, device: deviceDir, date })
         const base = datedName(f.name, date, settings.dateInName)
         for (let n = 0; state === 'taken'; n++) {
           path = `${dir}/${withSuffix(base, n)}`

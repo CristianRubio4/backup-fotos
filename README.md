@@ -10,7 +10,7 @@ Aplicación web (PWA) para hacer copias de seguridad de fotos y vídeos en un di
 
 | | |
 |---|---|
-| **Copia** | En streaming desde varios Workers; verificación releyendo la copia (SHA-256); carpetas año/mes por fecha EXIF; nombre con fecha; pausa, reanudar, cancelar; Wake Lock; batería (aviso < 20 %, pausa < 10 %) |
+| **Copia** | En streaming desde varios Workers; verificación releyendo la copia (SHA-256); una carpeta por copia (`Copia AAAA-MM-DD HHhMM`) o año/mes por fecha EXIF; nombre con fecha; pausa, reanudar, cancelar; Wake Lock; batería (aviso < 20 %, pausa < 10 %) |
 | **Anti-duplicados** | Manifest en el disco con hash, tamaño, nombres, rutas, fechas, dispositivo y estado; tamaño primero y luego hash; duplicados dentro de la selección y entre dispositivos; caché de hashes del origen en IndexedDB |
 | **Manifest seguro** | `.tmp` + `.bak` + validación + diario por segmentos para reanudar sin repetir; reconstrucción escaneando el disco |
 | **Análisis** | Dañados (firma, ceros, JPEG/PNG/vídeo truncados, no decodificables), vacíos, diminutos, borrosos (opcional), vídeos cortos (opcional); HEIC con libheif; posibles versiones reducidas (nube); todo ajustable y con "Copiar igualmente" |

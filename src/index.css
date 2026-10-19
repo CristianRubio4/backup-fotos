@@ -123,6 +123,61 @@ body {
   animation: rise 0.35s var(--ease-out-expo) both;
 }
 
+/* Menús (Popover API: capa superior, nunca quedan recortados; cierre con clic fuera o Esc). */
+.menu-pop {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  opacity: 1;
+  transform: none;
+  transform-origin: top right;
+  transition: opacity 0.12s ease, transform 0.12s var(--ease-out-expo), overlay 0.12s allow-discrete, display 0.12s allow-discrete;
+}
+.menu-pop:not(:popover-open) {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.97);
+}
+@starting-style {
+  .menu-pop:popover-open {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+
+/* Diálogos y visor de fotos (<dialog> nativo: modal, foco atrapado, Esc). */
+.dialog {
+  margin: auto;
+  max-width: min(28rem, calc(100vw - 2rem));
+  width: 100%;
+  border-radius: 1.5rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: var(--shadow-pop);
+  padding: 0;
+}
+.dialog[open] {
+  animation: rise 0.2s var(--ease-out-expo);
+}
+.dialog::backdrop {
+  background: oklch(0 0 0 / 0.45);
+  backdrop-filter: blur(4px);
+}
+.viewer {
+  margin: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 0;
+  background: oklch(0.12 0 0 / 0.96);
+  color: white;
+}
+.viewer::backdrop {
+  background: transparent;
+}
+
 /* Transiciones entre pantallas (View Transitions API). */
 ::view-transition-old(main),
 ::view-transition-new(main) {

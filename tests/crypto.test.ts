@@ -15,7 +15,7 @@ import {
 } from '../src/core/crypto'
 import { MANIFEST_FILE } from '../src/core/manifest/schema'
 import { ManifestStore } from '../src/core/manifest/store'
-import { DEFAULT_SETTINGS } from '../src/core/settings'
+import { DEFAULT_SETTINGS } from './test-settings'
 import { checkIntegrity } from '../src/core/tools/integrity'
 import { EncryptedMemoryTarget, src, testHasher } from './fakes'
 
