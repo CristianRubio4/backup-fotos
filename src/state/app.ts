@@ -545,6 +545,8 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
       openRunFolder: snapshot ? async (name) => new FsaTarget(await disk.handle.getDirectoryHandle(name, { create: true })) : undefined,
       runFolderName: force && previous?.folder ? previous.folder : undefined,
       sourceName: () => cableName,
+      // Solo el móvil por cable: cada foto pasa una sola vez por el cable, directa al disco y verificada.
+      readOnce: onlyCable,
       diskName: disk.name,
       encrypted: !!disk.encrypted,
       scan: force

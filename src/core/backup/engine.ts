@@ -120,6 +120,11 @@ export interface EngineInput {
   runFolderName?: string
   /** Nombre del origen para la carpeta (p. ej. el móvil por cable), consultado tras el escaneo; si da null, se deduce del EXIF. */
   sourceName?: () => string | null
+  /**
+   * Origen lento de leer (móvil por cable): cada archivo se lee UNA sola vez, al copiarlo
+   * (sin pasada previa de análisis). Se copia todo, verificado; la fecha es la del archivo.
+   */
+  readOnce?: boolean
   /** Archivos que se hashean/analizan a la vez (uno por Worker). La copia siempre es de uno en uno. */
   concurrency?: number
   now?: () => Date
@@ -266,7 +271,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     // "iPhone 15 Pro - 2026-10-19 14h30": se crea dentro del destino y TODO va dentro
     // (fotos y archivos de control). Cada copia es completa e independiente.
     if (snapshot) {
-      const name = input.runFolderName ?? runFolderName(new Date(report.startedAt), input.sourceName?.() ?? (await guessCamera(files, input.readExif, concurrency)))
+      const name = input.runFolderName ?? runFolderName(new Date(report.startedAt), input.sourceName?.() ?? (input.readOnce ? null : await guessCamera(files, input.readExif, concurrency)))
       report.folder = name
       const parent = target
       target = await input.openRunFolder!(name).catch(async (err) => {
@@ -410,6 +415,12 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       let exif: ExifInfo = { date: null }
       let verdict: Verdict = { action: 'copy', status: 'ok' }
       let features: Features | undefined
+      // Origen lento (cable): no se lee el archivo para analizarlo; se copia tal cual y se verifica al copiar.
+      if (input.readOnce && !forced) {
+        progress.phaseDone++
+        emit()
+        return { ok: { exif, verdict, motionPhoto: false, forced } }
+      }
       try {
         const blob = await f.getFile()
         try {

@@ -19,6 +19,9 @@ public static partial class Media
     static readonly HashSet<string> SystemDirs = new(StringComparer.OrdinalIgnoreCase)
     {
         "$recycle.bin", "system volume information", "lost.dir",
+        // Carpetas de un móvil que nunca tienen fotos ni vídeos del usuario: no se recorren (por cable, cada carpeta cuesta).
+        "Music", "Ringtones", "Notifications", "Alarms", "Podcasts", "Audiobooks", "Recordings",
+        "WhatsApp Voice Notes", "WhatsApp Audio", "WhatsApp Databases", "WhatsApp Backup Excluded Stickers",
     };
 
     public static string Ext(string name)

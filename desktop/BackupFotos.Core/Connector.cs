@@ -181,6 +181,7 @@ public sealed class ConnectorServer : IDisposable
                     if (s.Dirs.Count - lastDirs < 5) return;
                     lastDirs = s.Dirs.Count;
                     Line(new { t = "dir", path = dir, dirs = s.Dirs.Count, found = s.Files.Count });
+                    Activity?.Invoke($"Buscando fotos en el móvil: {s.Dirs.Count:N0} carpetas revisadas, {s.Files.Count:N0} fotos y vídeos encontrados");
                 });
                 lock (_entries) _entries[deviceId] = result.Files.ToDictionary(f => f.Path, StringComparer.Ordinal);
                 foreach (var f in result.Files)
@@ -206,7 +207,7 @@ public sealed class ConnectorServer : IDisposable
         var cached = _cache.Get(deviceId, path);
         if (cached is null)
         {
-            Activity?.Invoke($"Leyendo {path}");
+            Activity?.Invoke($"Copiando {path}");
             _hub.With(deviceId, source =>
             {
                 SourceEntry? entry = null;

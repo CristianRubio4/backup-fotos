@@ -43,10 +43,20 @@ public sealed class MtpSource : IMediaSource, IDisposable
     {
         var info = _device.GetDirectoryInfo(DevicePath(dir));
         var list = new List<SourceEntry>();
-        foreach (var d in info.EnumerateDirectories())
-            list.Add(new SourceEntry(FolderSource.Join(dir, d.Name), d.Name, true, 0, null));
-        foreach (var f in info.EnumerateFiles())
-            list.Add(new SourceEntry(FolderSource.Join(dir, f.Name), f.Name, false, (long)f.Length, f.LastWriteTime ?? f.CreationTime));
+        // En la raíz están las memorias (interna, tarjeta SD): pocas, se listan como carpetas.
+        if (dir.Length == 0)
+        {
+            foreach (var d in info.EnumerateDirectories())
+                list.Add(new SourceEntry(d.Name, d.Name, true, 0, null));
+            return list;
+        }
+        // Una sola pasada por carpeta: por cable, cada consulta al móvil es lenta.
+        foreach (var e in info.EnumerateFileSystemInfos())
+        {
+            var path = FolderSource.Join(dir, e.Name);
+            if (e is MediaFileInfo f) list.Add(new SourceEntry(path, f.Name, false, (long)f.Length, f.LastWriteTime ?? f.CreationTime));
+            else list.Add(new SourceEntry(path, e.Name, true, 0, null));
+        }
         return list;
     }
 

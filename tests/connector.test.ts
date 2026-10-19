@@ -81,7 +81,7 @@ describe('móvil por cable (a través de BackupFotos.exe)', () => {
 
   it('backup completo desde el móvil por cable: la carpeta lleva el nombre del móvil', async () => {
     const phone = { 'Interno/DCIM/Camera/IMG_1.jpg': 'foto uno', 'Interno/DCIM/Camera/IMG_2.jpg': 'foto dos', 'SD/DCIM/VID_1.mp4': 'vídeo' }
-    fakeConnector(phone, { name: 'Pixel 8' })
+    const calls = fakeConnector(phone, { name: 'Pixel 8' })
     const t = new MemoryTarget()
     let name: string | null = null
     const r = await runBackup({
@@ -93,6 +93,7 @@ describe('móvil por cable (a través de BackupFotos.exe)', () => {
         return s
       },
       sourceName: () => name,
+      readOnce: true,
       openRunFolder: async (n) => t.child(n),
       hasher: testHasher,
       readExif: async () => ({ date: null }),
@@ -107,5 +108,8 @@ describe('móvil por cable (a través de BackupFotos.exe)', () => {
     expect(r.copied).toHaveLength(3)
     expect(t.mediaPaths().every((p) => p.startsWith('Pixel 8 - 2026-10-19 17h05/'))).toBe(true)
     expect(r.searched?.count).toBe(2)
+    // Cada foto pasa una sola vez por el cable (sin lectura previa de análisis).
+    expect(calls.filter((c) => c === '/v1/file')).toHaveLength(3)
+    expect(r.copied.every((c) => r.unverified.every((u) => u.sourcePath !== c.sourcePath))).toBe(true)
   })
 })
