@@ -1,0 +1,68 @@
+name: Programa para Windows
+
+# Compila, prueba y publica BackupFotos.exe en la página de descargas del repositorio
+# (Releases). Todo ocurre en un Windows de GitHub: no hace falta instalar nada en local.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'tests/fixtures/set/**'
+      - '.github/workflows/desktop.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Tests
+        run: dotnet test desktop/BackupFotos.Tests/BackupFotos.Tests.csproj -c Release --logger "console;verbosity=normal"
+
+      - name: Compilar BackupFotos.exe (un solo archivo, sin instalar .NET)
+        run: >
+          dotnet publish desktop/BackupFotos.App/BackupFotos.App.csproj -c Release -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:DebugType=none
+          -p:Version=1.0.${{ github.run_number }}
+          -o out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BackupFotos
+          path: out/BackupFotos.exe
+
+      - name: Publicar en Descargas (Releases)
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-v1.0.${{ github.run_number }}
+          name: Backup de fotos para Windows 1.0.${{ github.run_number }}
+          make_latest: true
+          files: out/BackupFotos.exe
+          body: |
+            **Descarga:** `BackupFotos.exe` (abajo, en *Assets*). No necesita instalación.
+
+            1. Conecta el móvil por cable, desbloquéalo y elige **Transferencia de archivos** en el aviso USB del móvil.
+            2. Abre `BackupFotos.exe`, elige el móvil y dónde guardar, y pulsa **Hacer backup**.
+            3. Se crea una carpeta `Nombre del móvil - fecha hora` con **todas** las fotos y vídeos del móvil (todas sus carpetas), verificadas.
+
+            Windows puede avisar de que es un programa desconocido (no está firmado): pulsa **Más información → Ejecutar de todas formas**.

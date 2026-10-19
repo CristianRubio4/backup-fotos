@@ -5,3 +5,6 @@ dist
 dist-guide
 docs/guia/img/*.png
 guia-de-uso.pdf
+desktop/**/bin
+desktop/**/obj
+out

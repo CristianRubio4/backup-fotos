@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>BackupFotos.App</RootNamespace>
+    <AssemblyName>BackupFotos</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationVisualStyles>true</ApplicationVisualStyles>
+    <ApplicationDefaultFont>Segoe UI, 9.75pt</ApplicationDefaultFont>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Title>Backup de fotos</Title>
+    <Description>Copia todas las fotos y vídeos del móvil a un disco, verificadas.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MediaDevices" Version="1.10.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BackupFotos.Core\BackupFotos.Core.csproj" />
+  </ItemGroup>
+</Project>
