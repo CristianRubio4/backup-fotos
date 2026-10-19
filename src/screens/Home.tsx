@@ -325,6 +325,11 @@ export function HomeScreen() {
                 </li>
               </ol>
               <p className="text-muted">En el móvil, desbloquéalo y elige "Transferencia de archivos" al conectarlo. En iPhone, usa "Elegir fotos sueltas" o la app Fotos de Windows.</p>
+              <p className="text-muted">
+                <b>¿Windows dice "Enlace a Windows está desactivado"?</b> Has elegido el móvil conectado por wifi (aparece en "Dispositivos
+                móviles"), no por cable. Elige el que sale en <b>Este equipo</b> con el cable puesto, o activa en el móvil la app "Enlace a
+                Windows" y permite el acceso a archivos.
+              </p>
             </div>
           )}
           {isAndroid && (

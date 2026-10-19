@@ -148,6 +148,11 @@ export function HelpScreen() {
           Almacenamiento interno → DCIM → Camera, pulsa Ctrl + A y Abrir.
         </p>
         <p>
+          <b>"Enlace a Windows está desactivado en el móvil":</b> es un aviso de Windows, no de esta app. Sale al elegir el móvil que Windows
+          muestra en "Dispositivos móviles", que se conecta por wifi con la app Enlace a Windows. Elige mejor el móvil que aparece en{' '}
+          <b>Este equipo</b> con el cable USB conectado, o abre en el móvil la app "Enlace a Windows", actívala y permite el acceso a archivos.
+        </p>
+        <p>
           <b>En el propio móvil (Chrome en Android):</b> añade DCIM (y WhatsApp, capturas…) como origen y guarda en un disco conectado por USB-OTG
           o en otra carpeta del móvil o de su tarjeta SD.
         </p>
