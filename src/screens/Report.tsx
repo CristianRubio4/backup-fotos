@@ -232,8 +232,12 @@ export function ReportScreen() {
             La app busca en todas las subcarpetas, pero la carpeta elegida solo tenía{' '}
             {plural(report.searched.count - 1, 'subcarpeta', 'subcarpetas')}. En Windows, el móvil que se puede elegir como carpeta
             ("Dispositivos móviles" / Enlace a Windows) no es su memoria: es una carpeta del PC con unas pocas fotos recientes. Para copiar
-            todas, quita ese origen, conecta el móvil por cable en modo "Transferencia de archivos" y usa <b>Elegir fotos sueltas</b> → Este
-            equipo → tu móvil → Almacenamiento interno → DCIM → Camera → Ctrl + A → Abrir.
+            todas, usa el{' '}
+            <a className="font-medium underline" href="https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe">
+              programa para Windows
+            </a>
+            , que recorre todo el móvil por cable, o en esta web <b>Elegir fotos sueltas</b> → Este equipo → tu móvil → Almacenamiento interno →
+            DCIM → Camera → Ctrl + A → Abrir.
           </p>
         </Alert>
       )}

@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, FolderPlus, FolderOpen, HardDrive, HardDriveDownload, Images, Lock, Pencil, Plus, ShieldCheck, Smartphone, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, Download, FolderPlus, FolderOpen, HardDrive, HardDriveDownload, Images, Lock, Pencil, Plus, ShieldCheck, Smartphone, Trash2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Dialog } from '../components/Dialog'
 import { statusLabel } from '../components/DiskBadge'
@@ -307,9 +307,19 @@ export function HomeScreen() {
           </div>
           {showPhone && (
             <div className="animate-rise mt-2 space-y-2 rounded-xl bg-surface-2 p-3 text-xs leading-relaxed">
+              <a
+                href="https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe"
+                className="flex items-center gap-3 rounded-xl border border-accent/40 bg-accent-soft/50 p-3 text-sm hover:bg-accent-soft"
+              >
+                <Download size={18} className="shrink-0 text-accent-strong" aria-hidden />
+                <span>
+                  <b>Recomendado: programa para Windows.</b> Recorre TODAS las carpetas del móvil por cable (como el Explorador) y crea la carpeta
+                  "móvil - fecha y hora" con todo. Sin instalación: descárgalo y ábrelo.
+                </span>
+              </a>
               <p>
-                Al conectar un móvil por cable, Windows lo muestra como "dispositivo portátil", no como un disco normal, y el navegador no siempre
-                puede recorrerlo como carpeta. Tienes tres opciones:
+                Desde esta web, Windows no deja recorrer un móvil conectado por cable (lo trata como "dispositivo portátil", no como un disco).
+                Si no quieres usar el programa:
               </p>
               <ol className="list-decimal space-y-1 pl-4">
                 <li>

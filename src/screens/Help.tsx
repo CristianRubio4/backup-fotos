@@ -145,7 +145,15 @@ export function HelpScreen() {
           en todas las subcarpetas y se salta las del sistema (papelera, miniaturas, datos internos de las apps en Android/data).
         </p>
         <p>
-          <b>Móvil conectado por cable a un PC con Windows:</b> Windows lo muestra como "dispositivo portátil", no como un disco, y el navegador
+          <b>Lo más fácil con un PC con Windows:</b> el{' '}
+          <a className="font-medium text-accent-strong underline" href="https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe">
+            programa para Windows (BackupFotos.exe)
+          </a>
+          . Conecta el móvil por cable (desbloqueado, en "Transferencia de archivos"; en iPhone, pulsa "Confiar"), elige dónde guardar y pulsa
+          Hacer backup: recorre todas las carpetas del móvil y lo guarda todo en una carpeta "móvil - fecha y hora". No necesita instalación.
+        </p>
+        <p>
+          <b>Móvil conectado por cable a un PC con Windows (desde esta web):</b> Windows lo muestra como "dispositivo portátil", no como un disco, y el navegador
           no siempre puede recorrerlo. Si al añadirlo como carpeta da error, usa <b>Elegir fotos sueltas</b>: entra en Este equipo → tu móvil →
           Almacenamiento interno → DCIM → Camera, pulsa Ctrl + A y Abrir.
         </p>
