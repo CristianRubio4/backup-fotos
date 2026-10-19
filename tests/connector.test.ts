@@ -80,7 +80,8 @@ describe('móvil por cable (a través de BackupFotos.exe)', () => {
   })
 
   it('backup completo desde el móvil por cable: la carpeta lleva el nombre del móvil', async () => {
-    const phone = { 'Interno/DCIM/Camera/IMG_1.jpg': 'foto uno', 'Interno/DCIM/Camera/IMG_2.jpg': 'foto dos', 'SD/DCIM/VID_1.mp4': 'vídeo' }
+    // Tamaños distintos: si dos coinciden, se leen una vez más para descartar que sean la misma foto (el programa lo sirve de su caché).
+    const phone = { 'Interno/DCIM/Camera/IMG_1.jpg': 'foto uno', 'Interno/DCIM/Camera/IMG_2.jpg': 'la foto número dos', 'SD/DCIM/VID_1.mp4': 'vídeo' }
     const calls = fakeConnector(phone, { name: 'Pixel 8' })
     const t = new MemoryTarget()
     let name: string | null = null
