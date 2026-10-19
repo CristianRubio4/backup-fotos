@@ -10,7 +10,7 @@ import { ensureDiskId, readDiskId, renameDisk } from '../core/disk'
 import { ManifestStore } from '../core/manifest/store'
 import { DEFAULT_SETTINGS, type Device, type Settings } from '../core/settings'
 import { CancelledError, type SourceFile } from '../core/types'
-import { db, onDbBlocked, type DiskRecord, type HistoryRecord, type SourceRecord } from '../db'
+import { db, onDbBlocked, type DiskRecord, type HistoryRecord, type PendingRun, type SourceRecord } from '../db'
 import { createAnalyzer } from '../platform/analyzer'
 import { FsaTarget } from '../platform/fsa-target'
 import { capabilities, ensurePermission } from '../platform/capabilities'
@@ -19,6 +19,7 @@ import { io, POOL_SIZE, workerExif, workerHasher } from '../platform/io'
 import { BATTERY_PAUSE, BATTERY_WARN, keepScreenOn, readBattery, watchBattery, type BatteryInfo, type WakeState } from '../platform/power'
 import { checkReadable, isInside, walkSource } from '../platform/walk'
 import { connectorInfo, scanCable, type CableDevice } from '../platform/connector'
+import { knownOnDisk } from './copies'
 import { diskTarget, isLocked } from './keys'
 
 /** Por qué está esperando un backup interrumpido por el disco. */
@@ -81,8 +82,14 @@ interface AppState {
   renameDisk(key: string, name: string): Promise<void>
   setActiveDisk(key: string): void
   grantDisk(key: string): Promise<void>
-  /** Hace el backup; con `forcePaths`, copia solo esos descartados ("Copiar igualmente"). */
-  start(forcePaths?: string[]): Promise<void>
+  /**
+   * Hace el backup; con `forcePaths`, copia solo esos descartados ("Copiar igualmente");
+   * con `resumeFolder`, continúa esa copia interrumpida (lo ya copiado se salta sin leerlo).
+   */
+  start(forcePaths?: string[], resumeFolder?: string): Promise<void>
+  /** Copia que se quedó a medias en este navegador (para ofrecer continuarla). */
+  pendingRun: PendingRun | null
+  discardPendingRun(): Promise<void>
   pause(): void
   resume(): void
   cancel(): void
@@ -134,6 +141,12 @@ export const useApp = create<AppState>((set, get) => ({
   pickedFiles: [],
   cableDevices: [],
   connector: null,
+  pendingRun: null,
+
+  async discardPendingRun() {
+    set({ pendingRun: null })
+    await db.setPendingRun(null)
+  },
 
   async refreshConnector() {
     const info = await connectorInfo()
@@ -183,7 +196,7 @@ export const useApp = create<AppState>((set, get) => ({
     onDbBlocked(() =>
       set({ notice: 'Hay otra pestaña abierta con una versión anterior de la app. Ciérrala y recarga esta página para continuar.' }),
     )
-    const [sources, disks, settings, device, history, activeDiskKey, cableDevices] = await Promise.all([
+    const [sources, disks, settings, device, history, activeDiskKey, cableDevices, pendingRun] = await Promise.all([
       db.listSources(),
       db.listDisks(),
       db.getSettings(),
@@ -191,9 +204,10 @@ export const useApp = create<AppState>((set, get) => ({
       db.listHistory(),
       db.getActiveDisk(),
       db.getCableDevices(),
+      db.getPendingRun(),
     ])
     const views = await Promise.all(sources.map(async (s) => ({ ...s, perm: await s.handle.queryPermission({ mode: 'read' }) })))
-    set({ ready: true, sources: views, disks, settings, device, history, activeDiskKey: activeDiskKey ?? null, cableDevices })
+    set({ ready: true, sources: views, disks, settings, device, history, activeDiskKey: activeDiskKey ?? null, cableDevices, pendingRun })
     startDiskPolling()
     void readBattery().then((battery) => set({ battery }))
   },
@@ -306,7 +320,7 @@ export const useApp = create<AppState>((set, get) => ({
     set({ disks: get().disks.map((x) => (x.key === key ? rec : x)) })
   },
 
-  async start(forcePaths) {
+  async start(forcePaths, resumeFolder) {
     const { running } = get()
     if (running || !capabilities.fsAccess) return
     const disk = activeDisk()
@@ -379,7 +393,9 @@ export const useApp = create<AppState>((set, get) => ({
     }
     if (skipped.length) set({ notice: `Se omiten estas carpetas (sin permiso o no válidas): ${skipped.join(', ')}.` })
 
-    await withBackupLock(() => runJob(disk, sources, force, cable))
+    // Avisos del sistema al terminar (se pide permiso una vez, aprovechando el clic).
+    if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission().catch(() => {})
+    await withBackupLock(() => runJob(disk, sources, force, cable, resumeFolder))
   },
 
   pause() {
@@ -488,6 +504,30 @@ async function waitForDisk(disk: DiskRecord, diskId: string, ctl: Controller, sn
   }
 }
 
+/** Badging API (número en el icono de la app instalada), si el navegador la tiene. */
+function badgeApi() {
+  return navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
+}
+
+/** Aviso del sistema al terminar, si la pestaña no está a la vista. */
+function notifyDone(report: BackupReport, diskName: string) {
+  if (!('Notification' in window) || Notification.permission !== 'granted' || document.visibilityState === 'visible') return
+  const copied = report.copied.length + report.alreadyOnDisk.length
+  const body =
+    report.outcome === 'completed'
+      ? `${copied} fotos y vídeos copiados y verificados en ${report.folder ?? diskName}.`
+      : 'El backup se ha detenido. Abre la app para ver qué ha pasado y continuar.'
+  try {
+    const n = new Notification(report.outcome === 'completed' ? 'Backup terminado' : 'Backup detenido', { body, icon: `${import.meta.env.BASE_URL}icon-192.png`, tag: 'backup' })
+    n.onclick = () => {
+      window.focus()
+      n.close()
+    }
+  } catch {
+    // Algunos navegadores solo permiten avisos desde el service worker: no es imprescindible.
+  }
+}
+
 /** Archivos del último escaneo, para "Copiar igualmente" y las miniaturas del informe. */
 let lastScan = new Map<string, SourceFile>()
 
@@ -511,7 +551,7 @@ export async function saveDiskIndex(disk: DiskRecord) {
  * el usuario quiere conservar) sin pasar por los filtros, y fusiona el
  * resultado con el informe actual.
  */
-async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: SourceFile[], cable: CableDevice[] = []) {
+async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: SourceFile[], cable: CableDevice[] = [], resumeFolder?: string) {
   let disk = initialDisk
   const { settings, device, report: previous } = useApp.getState()
   const ctl = new Controller()
@@ -537,13 +577,20 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
   /** Con un único móvil por cable como origen, la carpeta de la copia lleva su nombre (el que da Windows). */
   let cableName: string | null = null
   const onlyCable = cable.length === 1 && sources.length === 0 && useApp.getState().pickedFiles.length === 0
+  const originCount = cable.length + sources.length + (useApp.getState().pickedFiles.length ? 1 : 0)
+  // "Solo lo nuevo": índice de lo que ya hay en las copias del disco (solo se leen sus registros, no las fotos).
+  const known = snapshot && settings.onlyNew && !force ? await knownOnDisk(disk) : null
+  let badge = -1
   let report: BackupReport
   try {
     report = await runBackup({
       target: diskTarget(disk),
       // Cada backup en su carpeta "Móvil - fecha hora" (creada dentro del destino; todo va dentro).
       openRunFolder: snapshot ? async (name) => new FsaTarget(await disk.handle.getDirectoryHandle(name, { create: true })) : undefined,
-      runFolderName: force && previous?.folder ? previous.folder : undefined,
+      runFolderName: force && previous?.folder ? previous.folder : resumeFolder,
+      // Misma estructura de carpetas que en el móvil; con un solo origen, sin repetir su nombre.
+      mirror: snapshot && settings.keepStructure ? { stripFirst: originCount === 1 } : undefined,
+      knownElsewhere: known ? (h) => known.get(h) : undefined,
       sourceName: () => cableName,
       // Una carpeta por copia (copia completa): cada foto se lee una sola vez, directa al disco y verificada,
       // sin pasadas previas de huellas ni de análisis. Con el móvil por cable es lo que marca la diferencia.
@@ -600,6 +647,12 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
       control: ctl,
       onProgress: (progress) => {
         useApp.setState({ progress })
+        // Número de archivos que faltan en el icono de la app instalada.
+        const left = progress.phase === 'copy' || progress.phase === 'verify' ? progress.phaseTotal - progress.phaseDone : -1
+        if (left !== badge) {
+          badge = left
+          if (left > 0) void badgeApi().setAppBadge?.(left).catch(() => {})
+        }
         const pct = progress.totalBytes > 0 ? Math.floor((progress.doneBytes / progress.totalBytes) * 100) : 0
         document.title = `${pct}% · Backup`
       },
@@ -613,6 +666,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
     controller = null
     keepScreenOn(false)
     stopBattery()
+    void badgeApi().clearAppBadge?.().catch(() => {})
     useApp.setState({ waitReason: null, batteryPaused: false })
   }
 
@@ -639,6 +693,13 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
     await useApp.getState().updateDisk(disk.key, { lastBackupAt: report.finishedAt, lastBackupFiles: report.copied.length + report.alreadyOnDisk.length })
   }
   await saveDiskIndex(disk)
+  // Copia a medias: se recuerda para ofrecer continuarla en la misma carpeta.
+  if (!force && report.folder) {
+    const pending = report.outcome === 'completed' ? null : { diskKey: disk.key, folder: report.folder, startedAt: report.startedAt, copied: report.copied.length + report.alreadyOnDisk.length }
+    useApp.setState({ pendingRun: pending })
+    await db.setPendingRun(pending)
+  }
+  notifyDone(report, disk.name)
   const shown = force && previous ? mergeForced(previous, report) : report
   useApp.setState({ running: false, paused: false, report: shown, screen: 'report', history: await db.listHistory() })
 }

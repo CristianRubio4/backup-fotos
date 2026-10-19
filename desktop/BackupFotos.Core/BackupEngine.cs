@@ -269,14 +269,17 @@ public static class BackupEngine
                     return new CopyOutcome(null, existing);
                 }
 
-                // Nombre final: fecha de captura + nombre original.
+                // Misma estructura de carpetas y mismo nombre que en el móvil: DCIM/Camera/IMG_1234.jpg
                 var exif = o.ReadDate(part);
                 var (date, fromExif) = Naming.PickDate(exif, f.Modified, o.Now());
-                var baseName = Naming.DatedName(f.Name, date);
+                var segments = f.Path.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Naming.Sanitize).ToArray();
+                var dirRel = string.Join('/', segments[..^1]);
+                var baseName = segments[^1];
                 string name;
                 var n = 0;
-                do name = Naming.WithSuffix(baseName, n++);
+                do name = dirRel.Length == 0 ? Naming.WithSuffix(baseName, n++) : $"{dirRel}/{Naming.WithSuffix(baseName, n++)}";
                 while (used.Contains(name) || File.Exists(Path.Combine(folder, name)));
+                if (dirRel.Length > 0) Directory.CreateDirectory(Path.Combine(folder, dirRel));
 
                 // Verificación: se relee lo escrito y se compara la huella.
                 if (o.Verify)

@@ -96,12 +96,12 @@ public class BackupTests
     }
 
     [Fact]
-    public void Las_copias_son_identicas_al_original_y_llevan_la_fecha_en_el_nombre()
+    public void Las_copias_son_identicas_al_original_con_la_misma_estructura_y_fecha()
     {
         using var dest = new TempDir();
         var p = new FakePhone().Add("DCIM/Camera/IMG_1.jpg", "contenido de la foto 1");
         var r = Run(p, dest.Path);
-        var file = Path.Combine(r.Folder!, "2024-05-17_103000_IMG_1.jpg");
+        var file = Path.Combine(r.Folder!, "DCIM", "Camera", "IMG_1.jpg");
         Assert.Equal("contenido de la foto 1", File.ReadAllText(file));
         Assert.Equal(new DateTime(2024, 5, 17, 10, 30, 0), File.GetLastWriteTime(file));
     }
@@ -122,7 +122,7 @@ public class BackupTests
         var a = entries.First(e => e.GetProperty("originalName").GetString() == "a.jpg");
         Assert.Equal(Sha("foto a"), a.GetProperty("hash").GetString());
         Assert.Matches("^[0-9a-f]{64}$", a.GetProperty("hash").GetString());
-        Assert.Equal("2024-05-17_103000_a.jpg", a.GetProperty("diskPath").GetString());
+        Assert.Equal("DCIM/a.jpg", a.GetProperty("diskPath").GetString());
         Assert.Equal("Galaxy S23/DCIM/a.jpg", a.GetProperty("sourcePath").GetString());
         Assert.Equal("verified", a.GetProperty("status").GetString());
         // La web exige exifDate presente (null o texto) y note ausente si no hay nota.
@@ -142,7 +142,7 @@ public class BackupTests
             Now = () => Now,
             ReadDate = _ => new DateTime(2023, 1, 2, 3, 4, 5),
         }, null, default);
-        Assert.Equal(new[] { "2023-01-02_030405_IMG_9.jpg" }, MediaFiles(r.Folder!));
+        Assert.Equal(new[] { "DCIM/IMG_9.jpg" }, MediaFiles(r.Folder!));
         var m = ControlFiles.Load(r.Folder!)!;
         Assert.Equal("2023-01-02T03:04:05", m.Entries[0].ExifDate);
     }
@@ -169,8 +169,8 @@ public class BackupTests
         Assert.Single(r.Duplicates); // "copia de IMG_0001.jpg" e IMG_0001.jpg son la misma foto
         Assert.Equal(empty, r.EmptyFiles.Count);
         Assert.Equal(r.Copied, MediaFiles(r.Folder!).Count);
-        // Las fotos con EXIF llevan su fecha de captura en el nombre.
-        Assert.Contains(MediaFiles(r.Folder!), f => f.EndsWith("_IMG_0002.jpg") && char.IsDigit(f[0]));
+        // Misma estructura de carpetas y nombres que en el origen.
+        Assert.Contains("DCIM/IMG_0002.jpg", MediaFiles(r.Folder!));
     }
 
     [Fact]
@@ -184,12 +184,12 @@ public class BackupTests
     }
 
     [Fact]
-    public void Nombres_repetidos_no_se_sobrescriben()
+    public void Archivos_con_el_mismo_nombre_en_carpetas_distintas_conservan_su_carpeta()
     {
         using var dest = new TempDir();
         var p = new FakePhone().Add("DCIM/A/IMG_1.jpg", "uno").Add("DCIM/B/IMG_1.jpg", "dos").Add("DCIM/C/IMG_1.jpg", "tres");
         var r = Run(p, dest.Path);
-        Assert.Equal(new[] { "2024-05-17_103000_IMG_1.jpg", "2024-05-17_103000_IMG_1_1.jpg", "2024-05-17_103000_IMG_1_2.jpg" }, MediaFiles(r.Folder!));
+        Assert.Equal(new[] { "DCIM/A/IMG_1.jpg", "DCIM/B/IMG_1.jpg", "DCIM/C/IMG_1.jpg" }, MediaFiles(r.Folder!));
         Assert.Equal(new[] { "uno", "dos", "tres" }.Order(), MediaFiles(r.Folder!).Select(f => File.ReadAllText(Path.Combine(r.Folder!, f))).Order());
     }
 

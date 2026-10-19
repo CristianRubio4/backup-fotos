@@ -256,7 +256,7 @@ function Step({ done, children }: { done: boolean; children: ReactNode }) {
 }
 
 export function HomeScreen() {
-  const { sources, disks, diskStates, settings, running, addSource, addDisk, start, go, pickedFiles, addPickedFiles, clearPickedFiles, cableDevices } = useApp()
+  const { sources, disks, diskStates, settings, running, addSource, addDisk, start, go, pickedFiles, addPickedFiles, clearPickedFiles, cableDevices, pendingRun, discardPendingRun } = useApp()
   useKeys()
   const [showTips, setShowTips] = useState(false)
   const [showPhone, setShowPhone] = useState(false)
@@ -322,6 +322,21 @@ export function HomeScreen() {
           )}
         </div>
       </section>
+
+      {pendingRun && !running && pendingRun.diskKey === disk?.key && (
+        <Alert tone="warn">
+          <p className="font-medium">La copia «{pendingRun.folder}» se quedó a medias ({plural(pendingRun.copied, 'archivo copiado', 'archivos copiados')}).</p>
+          <p className="mt-1">Puedes continuarla en la misma carpeta: lo ya copiado se salta al instante, sin volver a leerlo.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="primary" icon={HardDriveDownload} disabled={!ready} onClick={() => void start(undefined, pendingRun.folder)}>
+              Continuar la copia
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void discardPendingRun()}>
+              No, empezar de cero la próxima vez
+            </Button>
+          </div>
+        </Alert>
+      )}
 
       {warnings.length > 0 && (
         <Alert tone="warn">

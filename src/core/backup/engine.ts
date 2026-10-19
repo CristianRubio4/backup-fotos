@@ -6,7 +6,7 @@ import { ensureDiskId } from '../disk'
 import type { EntryStatus, ManifestEntry } from '../manifest/schema'
 import { ManifestStore, type ManifestRecovery } from '../manifest/store'
 import { extOf, isVideo } from '../media'
-import { datedName, dominantCamera, joinPath, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
+import { datedName, dominantCamera, joinPath, mirrorPath, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
 import { mapPool } from '../pool'
 import { incorporateDiskFiles } from './incorporate'
 import type { Device, Settings } from '../settings'
@@ -127,6 +127,16 @@ export interface EngineInput {
   readOnce?: boolean
   /** Origen lento (móvil por cable): no se leen fotos de muestra para adivinar el nombre del móvil. */
   slowSource?: boolean
+  /**
+   * "Solo lo nuevo en cada copia": fotos que ya están en OTRAS copias del disco (por su
+   * huella). Lo que está ahí no se copia de nuevo. Las rutas vienen desde la raíz del disco.
+   */
+  knownElsewhere?: (hash: string) => ManifestEntry | undefined
+  /**
+   * Copiar con la misma estructura de carpetas y los mismos nombres que en el origen
+   * ("Pictures/Screenshots/captura.png"). `stripFirst`: quitar el nombre del origen de la ruta.
+   */
+  mirror?: { stripFirst: boolean }
   /** Archivos que se hashean/analizan a la vez (uno por Worker). La copia siempre es de uno en uno. */
   concurrency?: number
   now?: () => Date
@@ -244,6 +254,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
   }
 
   let store: ManifestStore | null = null
+  /** Elementos del informe cuya ruta ya es desde la raíz del disco (están en otra copia). */
+  const fromRoot = new WeakSet<ReportItem>()
   let diskOk = true
 
   try {
@@ -357,6 +369,14 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
 
     setPhase('hash', preHash.length)
     const hashes = new Map<SourceFile, string>()
+    // Copia rápida: las huellas ya conocidas (de backups anteriores) salen de la caché, sin leer nada.
+    // Así se saltan al instante lo ya copiado al continuar una copia o con "solo lo nuevo".
+    if (input.readOnce && input.hashCache) {
+      for (const f of files) {
+        const h = await input.hashCache.get(f).catch(() => undefined)
+        if (h) hashes.set(f, h)
+      }
+    }
     // En paralelo (varios Workers): calcular hashes es CPU + lectura del origen, no escritura en el disco.
     const hashErrors = await mapPool(preHash, concurrency, async (f) => {
       await control.checkpoint()
@@ -393,12 +413,16 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     const hashed: HashedFile[] = files
       .filter((f) => !preHashSet.has(f) || hashes.has(f))
       .map((f) => ({ file: f, hash: hashes.get(f) ?? null }))
-    const plan = planDedupe(hashed, (h) => manifest.findByHash(h))
+    const plan = planDedupe(hashed, (h) => manifest.findByHash(h) ?? input.knownElsewhere?.(h))
     /** Dónde está (o quedará) cada foto en el disco, para colocar su vídeo de Live Photo al lado. */
     const placed = new Map<SourceFile, { diskPath: string; hash: string }>()
     for (const d of plan.onDisk) {
-      report.duplicates.push(item(d.file, { diskPath: d.existing.diskPath, reason: 'Ya está en el disco' }))
-      placed.set(d.file, { diskPath: d.existing.diskPath, hash: d.existing.hash })
+      const own = manifest.hasDiskPath(d.existing.diskPath)
+      const dup = item(d.file, { diskPath: d.existing.diskPath, reason: own ? 'Ya está en esta copia' : 'Ya está en una copia anterior' })
+      if (!own) fromRoot.add(dup)
+      report.duplicates.push(dup)
+      // Solo lo de esta copia sirve para colocar al lado el vídeo de una Live Photo.
+      if (own) placed.set(d.file, { diskPath: d.existing.diskPath, hash: d.existing.hash })
     }
     for (const d of plan.inSelection) {
       report.duplicates.push(item(d.file, { reason: `Repetido en la selección (igual que ${d.original.relPath})` }))
@@ -547,8 +571,18 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       }
       if (state === 'taken') {
         const { date } = pickDate(a.exif.date, f.lastModified, now())
-        const dir = targetDir({ byDate: !snapshot, device: deviceDir, date })
-        const base = datedName(f.name, date, settings.dateInName)
+        let dir: string
+        let base: string
+        if (input.mirror) {
+          // Misma estructura que en el móvil: Pictures/Screenshots/captura.png
+          const m = mirrorPath(f.relPath, input.mirror.stripFirst)
+          const cut = m.lastIndexOf('/')
+          dir = cut < 0 ? '' : m.slice(0, cut)
+          base = m.slice(cut + 1)
+        } else {
+          dir = targetDir({ byDate: !snapshot, device: deviceDir, date })
+          base = datedName(f.name, date, settings.dateInName)
+        }
         for (let n = 0; state === 'taken'; n++) {
           path = joinPath(dir, withSuffix(base, n))
           state = await tryPath(path, f, blob, known)
@@ -604,12 +638,16 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
         } else {
           const result = await withDisk(() => copyAndVerify(f, blob, path, known.hash))
           // Copia rápida: una foto repetida se detecta al copiarla (la huella sale de la propia copia) y se quita.
-          const twin = input.readOnce ? manifest.findByHash(result.hash) : undefined
+          const twin = input.readOnce ? (manifest.findByHash(result.hash) ?? input.knownElsewhere?.(result.hash)) : undefined
           if (twin) {
             await withDisk(() => target.remove(path))
-            report.duplicates.push(item(f, { diskPath: twin.diskPath, reason: 'Repetida en la selección: ya se ha copiado una igual' }))
+            await input.hashCache?.set(f, result.hash)
+            const own = manifest.hasDiskPath(twin.diskPath)
+            const dup = item(f, { diskPath: twin.diskPath, reason: own ? 'Repetida en la selección: ya se ha copiado una igual' : 'Ya está en una copia anterior' })
+            if (!own) fromRoot.add(dup)
+            report.duplicates.push(dup)
             counters.duplicates++
-            placed.set(f, { diskPath: twin.diskPath, hash: twin.hash })
+            if (own) placed.set(f, { diskPath: twin.diskPath, hash: twin.hash })
             progress.phaseDone++
             emit()
             continue
@@ -715,7 +753,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     // Con una carpeta por copia, las rutas del informe se dan desde la carpeta elegida ("iPhone… - 2026…/foto.jpg").
     if (report.folder) {
       for (const list of [report.copied, report.alreadyOnDisk, report.duplicates, report.unverified, report.reduced]) {
-        for (const it of list) if (it.diskPath) it.diskPath = joinPath(report.folder, it.diskPath)
+        for (const it of list) if (it.diskPath && !fromRoot.has(it)) it.diskPath = joinPath(report.folder, it.diskPath)
       }
     }
     report.finishedAt = now().toISOString()

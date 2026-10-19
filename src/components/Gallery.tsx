@@ -194,12 +194,35 @@ function Viewer({ items, index, onIndex, onClose, getBlob }: { items: MediaItem[
 }
 
 /** Cuadrícula de fotos y vídeos con carga diferida y visor a pantalla completa. */
-export function Gallery({ items, getBlob }: { items: MediaItem[]; getBlob: BlobGetter }) {
+export function Gallery({ items: all, getBlob }: { items: MediaItem[]; getBlob: BlobGetter }) {
   const [limit, setLimit] = useState(PAGE)
   const [open, setOpen] = useState<number | null>(null)
-  if (items.length === 0) return null
+  const [kind, setKind] = useState<'all' | 'photo' | 'video'>('all')
+  const videos = all.filter((i) => isVideo(i.name)).length
+  const items = kind === 'all' ? all : all.filter((i) => isVideo(i.name) === (kind === 'video'))
+  if (all.length === 0) return null
+  const chip = (k: typeof kind, label: string, n: number) => (
+    <button
+      type="button"
+      onClick={() => {
+        setKind(k)
+        setLimit(PAGE)
+      }}
+      aria-pressed={kind === k}
+      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${kind === k ? 'border-accent bg-accent-soft text-accent-strong' : 'border-line hover:bg-surface-2'}`}
+    >
+      {label} <span className="tabular-nums text-muted">{n}</span>
+    </button>
+  )
   return (
     <>
+      {videos > 0 && videos < all.length && (
+        <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Filtrar">
+          {chip('all', 'Todo', all.length)}
+          {chip('photo', 'Fotos', all.length - videos)}
+          {chip('video', 'Vídeos', videos)}
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5 lg:grid-cols-6">
         {items.slice(0, limit).map((it, i) => (
           <Tile key={it.sourcePath + (it.diskPath ?? '')} item={it} getBlob={getBlob} onOpen={() => setOpen(i)} />

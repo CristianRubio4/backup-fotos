@@ -109,6 +109,74 @@ describe('una carpeta por copia', () => {
     expect(t.mediaPaths()).toHaveLength(3) // la repetida no se queda en el disco
   })
 
+  it('misma estructura de carpetas y nombres que en el móvil', async () => {
+    const t = new MemoryTarget()
+    const files = [
+      src('Galaxy S23/Interno/Pictures/Screenshots/Screenshot_1.png', 'captura', MAY),
+      src('Galaxy S23/Interno/DCIM/Camera/IMG_1.jpg', 'foto', MAY),
+      src('Galaxy S23/Interno/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/IMG-WA1.jpg', 'wa', MAY),
+    ]
+    const r = await run(t, files, { ...snap(t, new Date(2026, 9, 19, 12, 0)), readOnce: true, slowSource: true, sourceName: () => 'Galaxy S23', mirror: { stripFirst: true } })
+    expect(t.mediaPaths()).toEqual([
+      'Galaxy S23 - 2026-10-19 12h00/Interno/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/IMG-WA1.jpg',
+      'Galaxy S23 - 2026-10-19 12h00/Interno/DCIM/Camera/IMG_1.jpg',
+      'Galaxy S23 - 2026-10-19 12h00/Interno/Pictures/Screenshots/Screenshot_1.png',
+    ])
+    expect(r.copied.map((c) => c.diskPath)).toContain('Galaxy S23 - 2026-10-19 12h00/Interno/Pictures/Screenshots/Screenshot_1.png')
+  })
+
+  it('continuar una copia interrumpida: lo ya copiado se salta sin leerlo', async () => {
+    const t = new MemoryTarget()
+    const cache = new Map<string, string>()
+    const hashCache: HashCache = { get: async (f) => cache.get(f.relPath), set: async (f, h) => void cache.set(f.relPath, h) }
+    const reads: string[] = []
+    const phone = (n: number) =>
+      Array.from({ length: n }, (_, i) => {
+        const f = src(`DCIM/IMG_${i}.jpg`, `foto número ${i}`, MAY)
+        return { ...f, getFile: () => (reads.push(f.relPath), f.getFile()) }
+      })
+    // Primera vez: se corta tras copiar algunas (cancelación).
+    const ctl = new Controller()
+    const first = await run(t, phone(6), {
+      ...snap(t, new Date(2026, 9, 19, 12, 0)),
+      readOnce: true,
+      slowSource: true,
+      hashCache,
+      control: ctl,
+      onProgress: (p) => {
+        if (p.phase === 'copy' && p.counters.copied >= 3) ctl.cancel()
+      },
+    })
+    expect(first.outcome).toBe('cancelled')
+    const done = first.copied.length
+    expect(done).toBeGreaterThan(0)
+    reads.length = 0
+    // Continuar en la misma carpeta: solo se leen las que faltaban.
+    const second = await run(t, phone(6), { ...snap(t, new Date(2026, 9, 19, 13, 0)), readOnce: true, slowSource: true, hashCache, runFolderName: first.folder })
+    expect(second.folder).toBe(first.folder)
+    expect(second.copied).toHaveLength(6 - done)
+    expect(second.duplicates).toHaveLength(done)
+    expect(reads).toHaveLength(6 - done)
+    expect(t.mediaPaths().filter((p) => p.startsWith(first.folder!))).toHaveLength(6)
+  })
+
+  it('"solo lo nuevo": lo que ya está en otra copia no se copia ni se lee', async () => {
+    const t = new MemoryTarget()
+    const cache = new Map<string, string>()
+    const hashCache: HashCache = { get: async (f) => cache.get(f.relPath), set: async (f, h) => void cache.set(f.relPath, h) }
+    const first = await run(t, [src('DCIM/IMG_1.jpg', 'uno', MAY), src('DCIM/IMG_2.jpg', 'dos dos', MAY)], { ...snap(t, new Date(2026, 9, 19, 10, 0)), readOnce: true, slowSource: true, hashCache })
+    const known = new Map(parseManifest(await t.readText(`${first.folder}/${MANIFEST_FILE}`))!.entries.map((e) => [e.hash, { ...e, diskPath: `${first.folder}/${e.diskPath}` }]))
+    const second = await run(t, [src('DCIM/IMG_1.jpg', 'uno', MAY), src('DCIM/IMG_2.jpg', 'dos dos', MAY), src('DCIM/IMG_3.jpg', 'tres tres tres', MAY)], {
+      ...snap(t, new Date(2026, 9, 20, 10, 0)),
+      readOnce: true,
+      slowSource: true,
+      hashCache,
+      knownElsewhere: (h) => known.get(h),
+    })
+    expect(second.copied.map((c) => c.sourcePath)).toEqual(['DCIM/IMG_3.jpg'])
+    expect(second.duplicates.map((d) => d.diskPath)).toEqual([`${first.folder}/2024-05-17_103000_IMG_1.jpg`, `${first.folder}/2024-05-17_103000_IMG_2.jpg`])
+  })
+
   it('con "una carpeta por dispositivo", el dispositivo va dentro de la copia', async () => {
     const t = new MemoryTarget()
     await run(t, [src('IMG_1.jpg', 'a', MAY)], { device: { id: 'm', name: 'Móvil de Ana' }, ...snap(t, new Date(2026, 9, 19, 9, 5), { layout: 'per-device' }) })

@@ -1,4 +1,4 @@
-import { AlertOctagon, Ban, ClipboardCheck, Copy, Files, HardDrive, Images, ShieldQuestion } from 'lucide-react'
+import { AlertOctagon, Ban, ClipboardCheck, Copy, Download, Files, HardDrive, Images, ShieldQuestion } from 'lucide-react'
 import { useCallback, useMemo, useRef } from 'react'
 import { Gallery, type BlobGetter } from '../components/Gallery'
 import { Thumb } from '../components/Thumb'
@@ -163,6 +163,31 @@ function Copied({ report }: { report: BackupReport }) {
   )
 }
 
+/** Informe completo en CSV (se abre con Excel): una fila por archivo, con qué ha pasado y dónde está. */
+function downloadCsv(report: BackupReport) {
+  const rows: string[][] = [['Resultado', 'Origen', 'En el disco', 'Tamaño (bytes)', 'Motivo']]
+  const add = (label: string, list: ReportItem[]) => {
+    for (const it of list) rows.push([label, it.sourcePath, it.diskPath ?? '', String(it.size), it.reason ?? ''])
+  }
+  add('Copiado', report.copied)
+  add('Ya estaba (backup interrumpido)', report.alreadyOnDisk)
+  add('No verificado', report.unverified)
+  add('Posible versión reducida', report.reduced)
+  add('Repetido / ya guardado', report.duplicates)
+  add('Descartado', report.discarded)
+  add('Error', report.errors)
+  add('No copiado (FAT32, > 4 GB)', report.fat32)
+  const esc = (v: string) => (/[";\n\r]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v)
+  // Punto y coma y BOM: Excel en español lo abre bien a la primera.
+  const csv = '﻿' + rows.map((r) => r.map(esc).join(';')).join('\r\n')
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `informe-backup-${report.startedAt.slice(0, 16).replace(/[T:]/g, '-')}.csv`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
 function ManifestNotice({ report }: { report: BackupReport }) {
   const m = report.manifest
   if (!m) return null
@@ -288,7 +313,12 @@ export function ReportScreen() {
         )}
       </div>
 
-      <Button onClick={() => go('home')}>Volver al inicio</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => go('home')}>Volver al inicio</Button>
+        <Button variant="ghost" icon={Download} onClick={() => downloadCsv(report)}>
+          Descargar el informe (CSV)
+        </Button>
+      </div>
     </>
   )
 }

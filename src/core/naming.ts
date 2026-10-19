@@ -85,6 +85,17 @@ export function targetDir(opts: { byDate: boolean; device: string | null; date: 
   return [opts.device ? sanitizeName(opts.device) : '', opts.byDate ? folderFor(opts.date) : ''].filter(Boolean).join('/')
 }
 
+/**
+ * Misma estructura de carpetas que en el origen ("Pictures/Screenshots/captura.png"),
+ * con cada tramo válido en Windows. Con `stripFirst` se quita el primer tramo (el
+ * nombre del origen, que ya da nombre a la carpeta de la copia).
+ */
+export function mirrorPath(relPath: string, stripFirst: boolean) {
+  const parts = relPath.split('/').filter(Boolean)
+  if (stripFirst && parts.length > 1) parts.shift()
+  return parts.map(sanitizeName).join('/')
+}
+
 /** Une carpetas y nombre ignorando las partes vacías: ("", "a.jpg") → "a.jpg". */
 export function joinPath(...parts: string[]) {
   return parts.filter(Boolean).join('/')

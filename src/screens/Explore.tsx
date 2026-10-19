@@ -3,13 +3,11 @@ import { JobProgress } from '../components/JobProgress'
 import { Alert, Button, Card, PageHeader } from '../components/ui'
 import { formatBytes } from '../core/format'
 import type { ManifestEntry } from '../core/manifest/schema'
-import { readDiskId } from '../core/disk'
-import { ManifestStore } from '../core/manifest/store'
 import { extOf, isVideo } from '../core/media'
 import type { DiskRecord } from '../db'
-import { FsaTarget } from '../platform/fsa-target'
 import { io } from '../platform/io'
 import { activeDisk, useApp } from '../state/app'
+import { loadSets, type BackupSet } from '../state/copies'
 import { diskTarget } from '../state/keys'
 import { readyDisk, useTools } from '../state/tools'
 
@@ -24,41 +22,6 @@ function entryDate(e: ManifestEntry) {
 
 function nameOf(e: ManifestEntry) {
   return e.originalName || e.diskPath.split('/').pop()!
-}
-
-/** Un conjunto de fotos del disco: una copia ("Móvil - fecha hora") o la estructura por fecha de la raíz. */
-interface BackupSet {
-  name: string
-  entries: ManifestEntry[]
-}
-
-/**
- * Copias del destino. Cada carpeta con su propio registro (.backup-disk-id y
- * manifest) es una copia; sus rutas se dan desde la raíz ("Copia…/foto.jpg").
- */
-async function loadSets(d: DiskRecord): Promise<BackupSet[]> {
-  const sets: BackupSet[] = []
-  if (d.diskId) {
-    const { store } = await ManifestStore.open(diskTarget(d), d.diskId)
-    if (store.entries().length) sets.push({ name: 'Por fecha (año/mes)', entries: store.entries() })
-  }
-  if (d.encrypted) return sets
-  const copies: BackupSet[] = []
-  for await (const [name, h] of d.handle.entries()) {
-    if (h.kind !== 'directory' || name.startsWith('.') || name.startsWith('$')) continue
-    const sub = new FsaTarget(h as FileSystemDirectoryHandle)
-    const info = await readDiskId(sub).catch(() => null)
-    if (!info) continue
-    try {
-      const { store } = await ManifestStore.open(sub, info.id)
-      copies.push({ name, entries: store.entries().map((e) => ({ ...e, diskPath: `${name}/${e.diskPath}` })) })
-    } catch {
-      // Copia con el registro dañado: se omite (sus fotos siguen en su carpeta).
-    }
-  }
-  // Las copias más recientes primero (el nombre acaba en la fecha y hora).
-  copies.sort((a, b) => b.name.slice(-16).localeCompare(a.name.slice(-16)))
-  return [...sets, ...copies]
 }
 
 /** Carga el contenido del archivo del disco para mostrarlo (descifrándolo si hace falta). */

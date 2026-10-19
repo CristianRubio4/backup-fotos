@@ -9,7 +9,12 @@ Aplicación web (PWA) para hacer copias de seguridad de fotos y vídeos en un di
 
 ## Cómo hacer el backup de tu móvil
 
-Cada backup crea en el destino **una sola carpeta** con el nombre del móvil y la fecha y hora (`Galaxy S23 - 2026-10-19 14h30`) y guarda dentro **todas** las fotos y vídeos, verificados, junto con los archivos de registro (`.backup-disk-id`, `.backup-manifest.json`). En el móvil no se borra ni se cambia nada.
+Cada backup crea en el destino **una sola carpeta** con el nombre del móvil y la fecha y hora (`Galaxy S23 - 2026-10-19 14h30`) y guarda dentro **todas** las fotos y vídeos, verificados, **con la misma estructura de carpetas y nombres que en el móvil** (`…/DCIM/Camera/IMG_1234.jpg`, `…/Pictures/Screenshots/captura.png`), junto con los archivos de registro (`.backup-disk-id`, `.backup-manifest.json`). En el móvil no se borra ni se cambia nada.
+
+- **Rápido:** cada foto se lee una sola vez (directa al disco y verificada); mientras se escribe una, ya se trae la siguiente; las repetidas se detectan al copiar.
+- **Continuar una copia cortada:** si se interrumpe, la app ofrece *Continuar la copia* en la misma carpeta; lo ya copiado se salta sin volver a leerlo.
+- **Solo lo nuevo (opcional, Ajustes):** cada carpeta nueva lleva solo lo que no esté ya en otra copia del disco; lo ya guardado ni se lee.
+- **Al terminar:** galería con filtros (fotos / vídeos), informe en CSV, aviso del sistema y número de archivos pendientes en el icono de la app instalada.
 
 > **¿Por qué hace falta BackupFotos.exe con el móvil por cable?** Windows no deja que un navegador recorra un móvil conectado por cable (lo trata como "dispositivo portátil", no como un disco): al elegirlo como carpeta, Windows solo entrega unas pocas fotos recientes. BackupFotos.exe **no se instala**: es un solo archivo que abres con doble clic. Mientras está abierto hace de **conector**: lee el móvil completo (como el Explorador) y se lo pasa a la web, que hace todo lo demás con su interfaz de siempre. Solo responde a esta web y solo desde el propio PC (127.0.0.1). También puede hacer el backup él solo, desde su ventana.
 

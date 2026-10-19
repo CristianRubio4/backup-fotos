@@ -31,6 +31,10 @@ export interface Settings {
   layout: 'together' | 'per-device'
   /** Cada backup en su propia carpeta "Copia 2026-10-19 14h30" (en vez de año/mes). */
   runFolder: boolean
+  /** Con una carpeta por copia: copiar solo lo que no esté ya en otra copia del disco (más rápido). */
+  onlyNew: boolean
+  /** Con una carpeta por copia: misma estructura de carpetas y nombres que en el origen. */
+  keepStructure: boolean
   /** Avisar si un disco lleva más de estos días sin backup. */
   staleDays: number
   /** Recordar comprobar la integridad del disco cada estos meses. */
@@ -60,6 +64,8 @@ export const DEFAULT_SETTINGS: Settings = {
   saveEvery: 20,
   layout: 'together',
   runFolder: true,
+  onlyNew: false,
+  keepStructure: true,
   staleDays: 30,
   integrityMonths: 6,
   zipBatchMB: typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 300 : 1000,

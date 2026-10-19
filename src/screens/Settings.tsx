@@ -72,6 +72,22 @@ export function SettingsScreen() {
           <input type="radio" name="runFolder" className="accent-[var(--accent)]" checked={!settings.runFolder} onChange={() => saveSettings({ ...settings, runFolder: false })} />
           Un solo backup por fecha, solo lo nuevo: <code className="text-xs">2026/10/…</code>
         </label>
+        {settings.runFolder && (
+          <>
+            <Toggle
+              label="Misma estructura de carpetas que en el móvil"
+              hint="Dentro de la carpeta de la copia: Pictures/Screenshots/captura.png, DCIM/Camera/IMG_1234.jpg… con los nombres originales. Si se desactiva, todo va junto con la fecha delante del nombre."
+              checked={settings.keepStructure}
+              onChange={(v) => saveSettings({ ...settings, keepStructure: v })}
+            />
+            <Toggle
+              label="Solo lo nuevo en cada copia"
+              hint="Cada carpeta nueva lleva solo las fotos que no estén ya en otra copia de este disco. Lo ya guardado se salta al instante, sin leerlo del móvil: las copias siguientes tardan muy poco."
+              checked={settings.onlyNew}
+              onChange={(v) => saveSettings({ ...settings, onlyNew: v })}
+            />
+          </>
+        )}
         <Toggle
           label="Separar por dispositivo"
           hint={`Añade una carpeta con el nombre del dispositivo (${device.name || 'Móvil de Ana'}).`}

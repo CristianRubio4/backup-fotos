@@ -121,6 +121,14 @@ async function set(key: string, value: unknown) {
   await (await dbp).put('kv', value, key)
 }
 
+export interface PendingRun {
+  diskKey: string
+  folder: string
+  startedAt: string
+  /** Cuántos archivos llevaba copiados. */
+  copied: number
+}
+
 export const db = {
   /** Móviles por cable (a través de BackupFotos.exe) elegidos como origen. */
   async getCableDevices(): Promise<Array<{ id: string; name: string }>> {
@@ -129,6 +137,15 @@ export const db = {
 
   async setCableDevices(list: Array<{ id: string; name: string }>) {
     await set('cableDevices', list)
+  },
+
+  /** Copia que se quedó a medias (para "Continuar la copia"). */
+  async getPendingRun(): Promise<PendingRun | null> {
+    return (await get<PendingRun>('pendingRun')) ?? null
+  },
+
+  async setPendingRun(run: PendingRun | null) {
+    await set('pendingRun', run)
   },
 
   async getSettings(): Promise<Settings> {
