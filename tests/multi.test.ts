@@ -86,6 +86,28 @@ describe('una carpeta por copia', () => {
     expect(t.mediaPaths().every((p) => p.startsWith('Samsung SM-S911B - 2026-10-19 14h30/'))).toBe(true)
   })
 
+  it('copia rápida: cada archivo se lee una sola vez y las repetidas se detectan al copiar', async () => {
+    const t = new MemoryTarget()
+    const reads = new Map<string, number>()
+    const counted = (path: string, content: string) => {
+      const f = src(path, content, MAY)
+      const get = f.getFile
+      return { ...f, getFile: () => (reads.set(path, (reads.get(path) ?? 0) + 1), get()) }
+    }
+    const files = [
+      counted('DCIM/IMG_1.jpg', 'foto repetida'),
+      counted('WhatsApp/IMG-WA1.jpg', 'foto repetida'), // mismo contenido y tamaño
+      counted('DCIM/IMG_2.jpg', 'otra foto'),
+      counted('DCIM/VID_1.mp4', 'un vídeo'),
+    ]
+    const r = await run(t, files, { ...snap(t, new Date(2026, 9, 19, 12, 0)), readOnce: true })
+    expect(r.outcome).toBe('completed')
+    expect(r.copied.map((c) => c.sourcePath)).toEqual(['DCIM/IMG_1.jpg', 'DCIM/IMG_2.jpg', 'DCIM/VID_1.mp4'])
+    expect(r.duplicates.map((d) => d.sourcePath)).toEqual(['WhatsApp/IMG-WA1.jpg'])
+    expect([...reads.values()].every((n) => n === 1)).toBe(true) // ni pasada de huellas ni de análisis
+    expect(t.mediaPaths()).toHaveLength(3) // la repetida no se queda en el disco
+  })
+
   it('con "una carpeta por dispositivo", el dispositivo va dentro de la copia', async () => {
     const t = new MemoryTarget()
     await run(t, [src('IMG_1.jpg', 'a', MAY)], { device: { id: 'm', name: 'Móvil de Ana' }, ...snap(t, new Date(2026, 9, 19, 9, 5), { layout: 'per-device' }) })

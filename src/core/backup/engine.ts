@@ -125,6 +125,8 @@ export interface EngineInput {
    * (sin pasada previa de análisis). Se copia todo, verificado; la fecha es la del archivo.
    */
   readOnce?: boolean
+  /** Origen lento (móvil por cable): no se leen fotos de muestra para adivinar el nombre del móvil. */
+  slowSource?: boolean
   /** Archivos que se hashean/analizan a la vez (uno por Worker). La copia siempre es de uno en uno. */
   concurrency?: number
   now?: () => Date
@@ -271,7 +273,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     // "iPhone 15 Pro - 2026-10-19 14h30": se crea dentro del destino y TODO va dentro
     // (fotos y archivos de control). Cada copia es completa e independiente.
     if (snapshot) {
-      const name = input.runFolderName ?? runFolderName(new Date(report.startedAt), input.sourceName?.() ?? (input.readOnce ? null : await guessCamera(files, input.readExif, concurrency)))
+      const name = input.runFolderName ?? runFolderName(new Date(report.startedAt), input.sourceName?.() ?? (input.slowSource ? null : await guessCamera(files, input.readExif, concurrency)))
       report.folder = name
       const parent = target
       target = await input.openRunFolder!(name).catch(async (err) => {
@@ -344,7 +346,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     const photoOfVideo = new Map(pairs.map((p) => [p.video, p.photo]))
 
     // ---- Hashes (solo de los que comparten tamaño con algo) ----
-    const preHash = needsPreHash(files, (s) => manifest.hasSize(s))
+    // Copia rápida: sin pasada previa de huellas; las repetidas se detectan al copiar.
+    const preHash = input.readOnce ? [] : needsPreHash(files, (s) => manifest.hasSize(s))
     const preHashSet = new Set(preHash)
     const sum = (list: SourceFile[]) => list.reduce((a, f) => a + f.size, 0)
     const copyFactor = settings.verifyHash ? 2 : 1
@@ -557,7 +560,19 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     /** Tras un error de escritura en un archivo > 4 GB, el disco es casi seguro FAT32: no se reintentan los demás. */
     let fat32Suspected = false
 
-    for (const hf of toCopy) {
+    // Copia rápida: mientras se escribe un archivo en el disco, ya se va leyendo el siguiente del origen.
+    const prefetch = (i: number) => {
+      const next = input.readOnce ? toCopy[i] : undefined
+      if (!next) return null
+      const p = next.file.getFile()
+      p.catch(() => {}) // si falla, el error se da al usarlo
+      return p
+    }
+    let ahead = prefetch(0)
+    for (let i = 0; i < toCopy.length; i++) {
+      const hf = toCopy[i]
+      const current = ahead
+      ahead = prefetch(i + 1)
       await control.checkpoint()
       const f = hf.file
       const a = analysis.get(f)!
@@ -570,7 +585,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
         continue
       }
       try {
-        const blob = await f.getFile()
+        const blob = await (current ?? f.getFile())
         const known = { hash: hf.hash }
         const { path, state, photoPlace } = await withDisk(() => choosePath(f, a, blob, known))
 
@@ -588,6 +603,17 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
           counters.copied++
         } else {
           const result = await withDisk(() => copyAndVerify(f, blob, path, known.hash))
+          // Copia rápida: una foto repetida se detecta al copiarla (la huella sale de la propia copia) y se quita.
+          const twin = input.readOnce ? manifest.findByHash(result.hash) : undefined
+          if (twin) {
+            await withDisk(() => target.remove(path))
+            report.duplicates.push(item(f, { diskPath: twin.diskPath, reason: 'Repetida en la selección: ya se ha copiado una igual' }))
+            counters.duplicates++
+            placed.set(f, { diskPath: twin.diskPath, hash: twin.hash })
+            progress.phaseDone++
+            emit()
+            continue
+          }
           // El estado final combina la verificación de la copia y el análisis del contenido.
           let status: EntryStatus = result.status
           let note = result.note
