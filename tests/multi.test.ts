@@ -106,6 +106,16 @@ describe('una carpeta por copia', () => {
   })
 })
 
+describe('informe de dónde se ha buscado', () => {
+  it('el informe cuenta las carpetas recorridas del origen', async () => {
+    const t = new MemoryTarget()
+    const r = await run(t, [src('Móvil/DCIM/Camera/a.jpg', 'a', MAY)], {
+      scan: async () => ({ files: [src('Móvil/DCIM/Camera/a.jpg', 'a', MAY)], ignored: [], dirs: ['Móvil', 'Móvil/DCIM', 'Móvil/DCIM/Camera'] }),
+    })
+    expect(r.searched).toEqual({ count: 3, sample: ['Móvil', 'Móvil/DCIM', 'Móvil/DCIM/Camera'] })
+  })
+})
+
 describe('primer uso de un disco con muchas fotos', () => {
   it('solo relee las del disco que tienen el tamaño de alguna que se va a copiar', async () => {
     const t = new MemoryTarget()

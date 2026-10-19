@@ -497,6 +497,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
             const files: SourceFile[] = []
             const ignored: string[] = []
             const unreadable: Array<{ relPath: string; reason: string }> = []
+            const dirs: string[] = []
             files.push(...useApp.getState().pickedFiles)
             for (const s of sources) {
               try {
@@ -504,6 +505,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
                 files.push(...r.files)
                 ignored.push(...r.ignored)
                 unreadable.push(...(r.unreadable ?? []))
+                dirs.push(...(r.dirs ?? []))
               } catch (err) {
                 if ((err as Error)?.name === 'CancelledError') throw err
                 // La carpeta entera dejó de estar accesible (móvil desconectado…): se sigue con las demás.
@@ -511,7 +513,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
               }
             }
             lastScan = new Map(files.map((f) => [f.relPath, f]))
-            return { files, ignored, unreadable }
+            return { files, ignored, unreadable, dirs }
           },
       hasher: workerHasher,
       readExif: workerExif,

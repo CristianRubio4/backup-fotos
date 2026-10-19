@@ -34,7 +34,7 @@ const CATEGORY: Record<DiscardCategory, string> = {
 
 const LIST_LIMIT = 300
 
-function ItemList({ title, items, showPath, open }: { title: string; items: ReportItem[]; showPath?: boolean; open?: boolean }) {
+function ItemList({ title, items, showPath, open, hideSize }: { title: string; items: ReportItem[]; showPath?: boolean; open?: boolean; hideSize?: boolean }) {
   if (items.length === 0) return null
   return (
     <details open={open} className="card p-4">
@@ -45,7 +45,7 @@ function ItemList({ title, items, showPath, open }: { title: string; items: Repo
         {items.slice(0, LIST_LIMIT).map((it, i) => (
           <li key={i} className="border-b border-line pb-1 last:border-0">
             <span className="font-medium break-all">{it.sourcePath}</span>
-            <span className="text-muted"> · {formatBytes(it.size)}</span>
+            {!hideSize && <span className="text-muted"> · {formatBytes(it.size)}</span>}
             {showPath && it.diskPath && <div className="break-all text-muted">→ {it.diskPath}</div>}
             {it.reason && <div className="text-muted">{it.reason}</div>}
           </li>
@@ -214,7 +214,8 @@ export function ReportScreen() {
           <Stat label="Datos copiados" value={formatBytes(report.bytesCopied)} icon={HardDrive} />
         </div>
         <p className="mt-3 text-xs text-muted">
-          {plural(report.scanned, 'foto o vídeo analizado', 'fotos y vídeos analizados')} en {formatDuration(secs)}.
+          {plural(report.scanned, 'foto o vídeo analizado', 'fotos y vídeos analizados')} en {formatDuration(secs)}
+          {report.searched && `, buscando en ${plural(report.searched.count, 'carpeta', 'carpetas')} (con todas sus subcarpetas)`}.
           {report.duplicates.length > 0 &&
             ` ${plural(report.duplicates.length, 'archivo no se ha copiado porque ya estaba', 'archivos no se han copiado porque ya estaban')} ${report.folder ? 'repetidos en la selección' : 'guardados en el disco (de backups anteriores o copiados antes a esa carpeta)'}: no se duplica nada.`}
           {report.ignored.count > 0 && ` Se ${report.ignored.count === 1 ? 'ha' : 'han'} ignorado ${plural(report.ignored.count, 'archivo que no es foto ni vídeo', 'archivos que no son fotos ni vídeos')}.`}
@@ -223,6 +224,19 @@ export function ReportScreen() {
           {report.incorporated > 0 && ` ${plural(report.incorporated, 'foto que ya estaba', 'fotos que ya estaban')} en el disco (copiadas antes a mano) se han incorporado al registro sin tocarlas.`}
         </p>
       </Card>
+
+      {report.outcome === 'completed' && report.searched && report.searched.count >= 1 && report.searched.count <= 3 && report.scanned < 50 && (
+        <Alert tone="warn">
+          <p className="font-medium">Solo se han encontrado {plural(report.scanned, 'foto o vídeo', 'fotos y vídeos')}: ¿es esa la carpeta de tu móvil?</p>
+          <p className="mt-1">
+            La app busca en todas las subcarpetas, pero la carpeta elegida solo tenía{' '}
+            {plural(report.searched.count - 1, 'subcarpeta', 'subcarpetas')}. En Windows, el móvil que se puede elegir como carpeta
+            ("Dispositivos móviles" / Enlace a Windows) no es su memoria: es una carpeta del PC con unas pocas fotos recientes. Para copiar
+            todas, quita ese origen, conecta el móvil por cable en modo "Transferencia de archivos" y usa <b>Elegir fotos sueltas</b> → Este
+            equipo → tu móvil → Almacenamiento interno → DCIM → Camera → Ctrl + A → Abrir.
+          </p>
+        </Alert>
+      )}
 
       {report.reduced.length > 0 && (
         <Alert tone="warn">
@@ -265,6 +279,9 @@ export function ReportScreen() {
         <ItemList title="Ya estaban en el disco (backup anterior interrumpido)" items={report.alreadyOnDisk} showPath />
         <ItemList title="Duplicados omitidos" items={report.duplicates} showPath />
         <ItemList title="Ignorados (no son fotos ni vídeos)" items={report.ignored.sample.map((p) => ({ name: p, sourcePath: p, size: 0 }))} />
+        {report.searched && (
+          <ItemList title="Carpetas en las que se ha buscado" items={report.searched.sample.map((p) => ({ name: p, sourcePath: p, size: 0 }))} hideSize />
+        )}
       </div>
 
       <Button onClick={() => go('home')}>Volver al inicio</Button>

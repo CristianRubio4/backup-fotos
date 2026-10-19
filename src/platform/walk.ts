@@ -25,6 +25,8 @@ export async function walkSource(
   const files: SourceFile[] = []
   const ignored: string[] = []
   const unreadable: NonNullable<ScanResult['unreadable']> = []
+  /** Carpetas recorridas (para el informe: así se ve dónde se ha buscado). */
+  const dirs: string[] = []
   const base = opts.baseCount ?? 0
   const label = (rel: string) => (opts.label ? (rel ? `${opts.label}/${rel}` : opts.label) : rel)
 
@@ -33,6 +35,7 @@ export async function walkSource(
   }
 
   async function visit(dir: FileSystemDirectoryHandle, prefix: string) {
+    dirs.push(label(prefix) || dir.name)
     // El iterador puede fallar a mitad (carpeta desaparecida): lo ya visto se conserva.
     try {
       for await (const [name, handle] of dir.entries()) {
@@ -82,7 +85,7 @@ export async function walkSource(
 
   await visit(root, '')
   onFound(base + files.length)
-  return { files, ignored: ignored.map(label), unreadable }
+  return { files, ignored: ignored.map(label), unreadable, dirs }
 }
 
 /**

@@ -68,6 +68,8 @@ export interface BackupReport {
   incorporated: number
   bytesCopied: number
   manifest: ManifestRecovery | null
+  /** Carpetas del origen en las que se ha buscado (hasta 500) y cuántas son en total. */
+  searched?: { count: number; sample: string[] }
   /** Carpeta de esta copia en el disco ("iPhone 15 Pro - 2026-10-19 14h30"), si se usa una por backup. */
   folder?: string
 }
@@ -78,6 +80,8 @@ export interface ScanResult {
   ignored: string[]
   /** Archivos o carpetas que no se han podido leer (se informa y se sigue con el resto). */
   unreadable?: Array<{ relPath: string; reason: string }>
+  /** Carpetas recorridas (incluida la de origen). */
+  dirs?: string[]
 }
 
 export interface EngineInput {
@@ -244,6 +248,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     })
     report.scanned = scan.files.length
     report.ignored = { count: scan.ignored.length, sample: scan.ignored.slice(0, 50) }
+    if (scan.dirs) report.searched = { count: scan.dirs.length, sample: scan.dirs.slice(0, 500) }
     for (const u of scan.unreadable ?? []) {
       report.errors.push({ name: u.relPath.split('/').pop() ?? u.relPath, sourcePath: u.relPath, size: 0, reason: `No se ha podido leer: ${u.reason}` })
       counters.errors++
