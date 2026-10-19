@@ -11,17 +11,19 @@ Aplicación web (PWA) para hacer copias de seguridad de fotos y vídeos en un di
 
 Cada backup crea en el destino **una sola carpeta** con el nombre del móvil y la fecha y hora (`Galaxy S23 - 2026-10-19 14h30`) y guarda dentro **todas** las fotos y vídeos, verificados, junto con los archivos de registro (`.backup-disk-id`, `.backup-manifest.json`). En el móvil no se borra ni se cambia nada.
 
-> **¿Por qué hay un programa para Windows además de la web?** Windows no deja que un navegador recorra un móvil conectado por cable (lo trata como "dispositivo portátil", no como un disco). Al elegir el móvil como carpeta en la web, Windows solo entrega unas pocas fotos recientes. El programa usa el mismo acceso que el Explorador de Windows y recorre la memoria completa del móvil, carpeta a carpeta.
+> **¿Por qué hace falta BackupFotos.exe con el móvil por cable?** Windows no deja que un navegador recorra un móvil conectado por cable (lo trata como "dispositivo portátil", no como un disco): al elegirlo como carpeta, Windows solo entrega unas pocas fotos recientes. BackupFotos.exe **no se instala**: es un solo archivo que abres con doble clic. Mientras está abierto hace de **conector**: lee el móvil completo (como el Explorador) y se lo pasa a la web, que hace todo lo demás con su interfaz de siempre. Solo responde a esta web y solo desde el propio PC (127.0.0.1). También puede hacer el backup él solo, desde su ventana.
 
 ### Android
 
 **Con un PC con Windows (recomendado)**
 
-1. Descarga [BackupFotos.exe](https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe). No necesita instalación. Si Windows avisa de que es un programa desconocido: **Más información → Ejecutar de todas formas** (no está firmado).
+1. Descarga [BackupFotos.exe](https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe) (solo la primera vez) y ábrelo con doble clic. No se instala. Si Windows avisa de que es un programa desconocido: **Más información → Ejecutar de todas formas** (no está firmado). Déjalo abierto.
 2. Conecta el móvil por cable y **desbloquéalo**. En el aviso USB del móvil elige **Transferencia de archivos** (en algunos móviles: "Archivos" o "MTP").
-3. Abre el programa: el móvil aparece solo en la lista. Elige **dónde guardar** (un disco externo o una carpeta del PC) y pulsa **Hacer backup**.
-4. El programa busca en **todas** las carpetas del móvil, también en la tarjeta SD: cámara, capturas, WhatsApp (`Android/media`), Telegram, descargas… Se salta solo los datos internos de las apps (`Android/data`, `Android/obb`), la papelera y las miniaturas.
-5. Al terminar: **Abrir la carpeta** para ver las fotos, o **Ver detalles** para ver las carpetas revisadas y si algún archivo no se pudo copiar (sigue en el móvil).
+3. En la [app web](https://cristianrubio4.github.io/backup-fotos/) (o la app instalada): **Fotos que copiar → Móvil por cable** → **Añadir** junto a tu móvil. Si el navegador pregunta si la web puede acceder a dispositivos de la red local, pulsa **Permitir** (es el programa, en tu propio PC).
+4. **Dónde guardar → Añadir** (un disco externo o una carpeta del PC) y **Hacer backup**.
+5. Se recorren **todas** las carpetas del móvil, también la tarjeta SD: cámara, capturas, WhatsApp (`Android/media`), Telegram, descargas… Se saltan solo los datos internos de las apps (`Android/data`, `Android/obb`), la papelera y las miniaturas. El resultado es una carpeta `Nombre del móvil - fecha hora`, y en el informe pulsas **Copiados** para ver las fotos.
+
+La próxima vez basta con abrir el programa, conectar el móvil y pulsar **Hacer backup** en la web: el móvil queda recordado.
 
 Mantén el móvil desbloqueado durante la copia. Si se bloquea o se desconecta, lo ya copiado queda guardado y verificado; vuelve a lanzar el backup.
 
@@ -42,7 +44,7 @@ Mantén el móvil desbloqueado durante la copia. Si se bloquea o se desconecta, 
 2. En el iPhone: **Ajustes → Fotos → Transferir a Mac o PC → Mantener originales**. Así se copian las fotos tal cual (HEIC y vídeos MOV); con "Automático" el iPhone las convierte a JPG al vuelo.
 3. Si usas iCloud con **Optimizar almacenamiento**, el iPhone solo guarda versiones reducidas: cambia a **Descargar y conservar originales** (Ajustes → [tu nombre] → iCloud → Fotos) y espera a que se descarguen.
 4. Conecta el iPhone por cable, **desbloquéalo** y pulsa **Confiar** en el aviso "¿Confiar en este ordenador?".
-5. Abre [BackupFotos.exe](https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe), elige el iPhone y dónde guardar, y pulsa **Hacer backup**. Las Live Photos se copian como foto (HEIC) + vídeo (MOV) con el mismo nombre.
+5. Abre [BackupFotos.exe](https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe) (no se instala) y déjalo abierto. En la [app web](https://cristianrubio4.github.io/backup-fotos/): **Fotos que copiar → Móvil por cable → Añadir** junto a tu iPhone, elige dónde guardar y pulsa **Hacer backup**. Las Live Photos se copian como foto (HEIC) + vídeo (MOV) con el mismo nombre.
 
 **Con un Mac**: importa las fotos con la app **Fotos** o **Captura de Imagen** a una carpeta y haz el backup de esa carpeta con la [app web](https://cristianrubio4.github.io/backup-fotos/) en Chrome o Edge.
 
@@ -97,6 +99,8 @@ Detalles técnicos:
 ## Programa para Windows (`desktop/`)
 
 C# / .NET 8 (WinForms). Acceso al móvil con Windows Portable Devices (MTP) mediante [MediaDevices](https://github.com/Bassman2/MediaDevices); fecha de captura con MetadataExtractor.
+
+**Conector para la web** (`ConnectorServer`): mientras el programa está abierto escucha en `http://127.0.0.1:47613` (solo este PC) y solo atiende a los orígenes de la web (`Origin` comprobado, CORS y `Access-Control-Allow-Private-Network`). `GET /v1/info` (móviles conectados), `GET /v1/scan?device=` (recorrido completo en NDJSON según avanza) y `GET /v1/file?device=&path=` (contenido, con caché temporal en disco para no leer dos veces del cable). La web lo usa desde `src/platform/connector.ts`; la CSP solo permite esa dirección además de la propia web.
 
 ```
 desktop/BackupFotos.Core/   recorrido completo, copia a .part + SHA-256, verificación releyendo, registro compatible con la web

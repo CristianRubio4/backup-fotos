@@ -14,6 +14,16 @@ public sealed class MainForm : Form
     static readonly Color Bad = Color.FromArgb(220, 38, 38);
 
     readonly AppSettings _settings = AppSettings.Load();
+    readonly MtpHub _hub = new();
+    ConnectorServer? _server;
+    readonly Label _connector = new()
+    {
+        AutoSize = true,
+        Dock = DockStyle.Top,
+        Padding = new Padding(12, 10, 12, 10),
+        Margin = new Padding(0, 4, 0, 8),
+        MaximumSize = new Size(620, 0),
+    };
     readonly ComboBox _devices = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4) };
     readonly Button _refresh = MakeButton("Buscar de nuevo");
     readonly Label _deviceHint = Hint("");
@@ -56,6 +66,8 @@ public sealed class MainForm : Form
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, AutoScroll = true };
         layout.Controls.Add(new Label { Text = "Backup de fotos del móvil", AutoSize = true, Font = new Font("Segoe UI Semibold", 18f) });
         layout.Controls.Add(Hint("Copia TODAS las fotos y vídeos del móvil (todas sus carpetas) en una carpeta nueva con el nombre del móvil y la fecha y hora. Cada archivo se verifica. En el móvil no se borra ni se cambia nada."));
+        layout.Controls.Add(_connector);
+        StartConnector();
 
         layout.Controls.Add(SectionTitle("1. Móvil"));
         layout.Controls.Add(Row(_devices, _refresh));
@@ -113,21 +125,52 @@ public sealed class MainForm : Form
         public override string ToString() => Name;
     }
 
-    // ---- Móviles conectados ----
+    // ---- Conector para la web ----
 
-    void LoadDevices()
+    /// <summary>
+    /// Mientras esta ventana esté abierta, la web (cristianrubio4.github.io) puede leer el
+    /// móvil por cable a través de 127.0.0.1. Solo desde este PC y solo esa web.
+    /// </summary>
+    void StartConnector()
     {
-        var previous = (_devices.SelectedItem as DeviceItem)?.Id;
-        _devices.Items.Clear();
         try
         {
-            foreach (var d in MediaDevice.GetDevices())
-                _devices.Items.Add(new DeviceItem(d.DeviceId, MtpSource.DisplayName(d)));
+            _server = new ConnectorServer(_hub, version: Application.ProductVersion);
+            _server.Activity += a => { try { BeginInvoke(new Action(() => SetConnector(true, a))); } catch { /* cerrando */ } };
+            SetConnector(true, null);
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+            SetConnector(false, "Ya hay otra ventana de Backup de fotos abierta: la web usará esa.");
+        }
+    }
+
+    void SetConnector(bool on, string? activity)
+    {
+        _connector.BackColor = on ? Color.FromArgb(236, 253, 243) : Color.FromArgb(254, 243, 199);
+        _connector.ForeColor = on ? Color.FromArgb(21, 128, 61) : Color.FromArgb(146, 64, 14);
+        _connector.Text = on
+            ? "● Conector para la web activo. Puedes hacer el backup desde la web (Fotos que copiar → Móvil por cable) mientras esta ventana esté abierta, o desde aquí mismo."
+              + (activity is null ? "" : $"\nAhora: {activity}")
+            : $"● {activity}";
+    }
+
+    // ---- Móviles conectados ----
+
+    async void LoadDevices()
+    {
+        var previous = (_devices.SelectedItem as DeviceItem)?.Id;
+        IReadOnlyList<DeviceInfo> found = [];
+        try
+        {
+            found = await Task.Run(() => _hub.List());
         }
         catch (Exception ex)
         {
             _deviceHint.Text = $"No se pueden listar los dispositivos: {ex.Message}";
         }
+        _devices.Items.Clear();
+        foreach (var d in found) _devices.Items.Add(new DeviceItem(d.Id, d.Name));
         if (_devices.Items.Count > 0)
         {
             var again = _devices.Items.Cast<DeviceItem>().FirstOrDefault(d => d.Id == previous);
@@ -213,22 +256,22 @@ public sealed class MainForm : Form
 
         var ct = _cts.Token;
         var progress = new Progress<BackupProgress>(ShowProgress);
-        // WPD (el acceso al móvil) es COM: se usa desde un hilo STA propio para no bloquear la ventana.
+        // El acceso al móvil (WPD, COM) va por el hilo de los dispositivos; aquí solo se espera sin bloquear la ventana.
         var thread = new Thread(() =>
         {
-            BackupResult result;
+            BackupResult result = new() { Outcome = Outcome.Failed, Failure = "El móvil ya no está conectado." };
             try
             {
-                var d = MediaDevice.GetDevices().FirstOrDefault(x => x.DeviceId == device.Id)
-                    ?? throw new InvalidOperationException("El móvil ya no está conectado.");
-                using var source = new MtpSource(d);
-                result = BackupEngine.Run(new BackupOptions
+                _hub.With(device.Id, source =>
                 {
-                    Source = source,
-                    DestinationRoot = dest,
-                    DeviceId = _settings.PcId,
-                    DeviceName = Environment.MachineName,
-                }, progress, ct);
+                    result = BackupEngine.Run(new BackupOptions
+                    {
+                        Source = source,
+                        DestinationRoot = dest,
+                        DeviceId = _settings.PcId,
+                        DeviceName = Environment.MachineName,
+                    }, progress, ct);
+                });
             }
             catch (Exception ex)
             {
@@ -244,7 +287,6 @@ public sealed class MainForm : Form
             }
         })
         { IsBackground = true, Name = "Backup" };
-        thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
     }
 
@@ -329,6 +371,13 @@ public sealed class MainForm : Form
         using var f = new Form { Text = "Detalles del backup", ClientSize = new Size(760, 520), StartPosition = FormStartPosition.CenterParent, Icon = Icon };
         f.Controls.Add(new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Dock = DockStyle.Fill, Font = new Font("Consolas", 9.5f), Text = text.ToString(), BackColor = Color.White });
         f.ShowDialog(this);
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _server?.Dispose();
+        _hub.Dispose();
+        base.OnFormClosed(e);
     }
 
     void OnClosing(object? sender, FormClosingEventArgs e)

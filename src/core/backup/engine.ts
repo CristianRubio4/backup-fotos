@@ -118,6 +118,8 @@ export interface EngineInput {
   openRunFolder?: (name: string) => Promise<Target>
   /** Nombre de carpeta de una copia anterior (para "Copiar igualmente" en la misma copia). */
   runFolderName?: string
+  /** Nombre del origen para la carpeta (p. ej. el móvil por cable), consultado tras el escaneo; si da null, se deduce del EXIF. */
+  sourceName?: () => string | null
   /** Archivos que se hashean/analizan a la vez (uno por Worker). La copia siempre es de uno en uno. */
   concurrency?: number
   now?: () => Date
@@ -264,7 +266,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     // "iPhone 15 Pro - 2026-10-19 14h30": se crea dentro del destino y TODO va dentro
     // (fotos y archivos de control). Cada copia es completa e independiente.
     if (snapshot) {
-      const name = input.runFolderName ?? runFolderName(new Date(report.startedAt), await guessCamera(files, input.readExif, concurrency))
+      const name = input.runFolderName ?? runFolderName(new Date(report.startedAt), input.sourceName?.() ?? (await guessCamera(files, input.readExif, concurrency)))
       report.folder = name
       const parent = target
       target = await input.openRunFolder!(name).catch(async (err) => {

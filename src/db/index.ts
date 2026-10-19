@@ -122,6 +122,15 @@ async function set(key: string, value: unknown) {
 }
 
 export const db = {
+  /** Móviles por cable (a través de BackupFotos.exe) elegidos como origen. */
+  async getCableDevices(): Promise<Array<{ id: string; name: string }>> {
+    return (await get<Array<{ id: string; name: string }>>('cableDevices')) ?? []
+  },
+
+  async setCableDevices(list: Array<{ id: string; name: string }>) {
+    await set('cableDevices', list)
+  },
+
   async getSettings(): Promise<Settings> {
     return withDefaults(await get<Partial<Settings>>('settings'))
   },

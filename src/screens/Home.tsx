@@ -1,5 +1,5 @@
-import { AlertTriangle, Check, Download, FolderPlus, FolderOpen, HardDrive, HardDriveDownload, Images, Lock, Pencil, Plus, ShieldCheck, Smartphone, Trash2 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { AlertTriangle, Cable, Check, Download, FolderPlus, Loader2, FolderOpen, HardDrive, HardDriveDownload, Images, Lock, Pencil, Plus, ShieldCheck, Smartphone, Trash2 } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Dialog } from '../components/Dialog'
 import { statusLabel } from '../components/DiskBadge'
 import { Menu, MenuItem } from '../components/Menu'
@@ -7,6 +7,7 @@ import { Alert, Badge, Button, Card, PageHeader, StatusDot } from '../components
 import { UnlockDisk } from '../components/UnlockDisk'
 import { daysSince, formatBytes, formatDateTime, plural } from '../core/format'
 import type { DiskRecord } from '../db'
+import { CONNECTOR_DOWNLOAD } from '../platform/connector'
 import { activeDisk, useApp, type SourceView } from '../state/app'
 import { isLocked, useKeys } from '../state/keys'
 
@@ -143,6 +144,105 @@ function SourceRow({ s }: { s: SourceView }) {
   )
 }
 
+/** Mientras haga falta, comprueba cada pocos segundos si BackupFotos.exe está abierto y qué móviles ve. */
+function useConnectorPolling(active: boolean, ms: number) {
+  const refreshConnector = useApp((s) => s.refreshConnector)
+  useEffect(() => {
+    if (!active) return
+    let alive = true
+    const tick = async () => {
+      if (alive && document.visibilityState === 'visible') await refreshConnector()
+    }
+    void tick()
+    const id = setInterval(tick, ms)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [active, ms, refreshConnector])
+}
+
+/** Un móvil por cable elegido como origen. */
+function CableRow({ id, name }: { id: string; name: string }) {
+  const { running, connector, removeCableDevice } = useApp()
+  const seen = connector?.some((d) => d.id === id)
+  return (
+    <li className="flex items-center gap-3 rounded-2xl border border-line p-3">
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${seen ? 'bg-accent-soft text-accent-strong' : 'bg-surface-2 text-muted'}`}>
+        <Smartphone size={18} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium">{name}</div>
+        <div className="flex items-center gap-1.5 text-xs text-muted">
+          <StatusDot tone={seen ? 'ok' : connector ? 'warn' : 'off'} />
+          {seen
+            ? 'Conectado por cable · se copiarán todas sus carpetas'
+            : connector
+              ? 'No conectado: conéctalo, desbloquéalo y elige "Transferencia de archivos"'
+              : 'Abre BackupFotos.exe para leerlo'}
+        </div>
+      </div>
+      <Button size="sm" variant="ghost" disabled={running} onClick={() => void removeCableDevice(id)}>Quitar</Button>
+    </li>
+  )
+}
+
+/** Guía para conectar el móvil por cable a través del programa, y lista de móviles que ve. */
+function CablePanel() {
+  const { connector, cableDevices, addCableDevice } = useApp()
+  useConnectorPolling(true, 2000)
+  return (
+    <div className="animate-rise mt-2 space-y-3 rounded-xl bg-surface-2 p-3 text-xs leading-relaxed">
+      {connector === null ? (
+        <>
+          <p>
+            Windows no deja que una web recorra un móvil conectado por cable. Para eso está <b>BackupFotos.exe</b>: un programa pequeño que{' '}
+            <b>no se instala</b>. Mientras esté abierto, esta web lee todas las carpetas del móvil a través de él (solo en este PC).
+          </p>
+          <ol className="list-decimal space-y-1 pl-4">
+            <li>
+              <a className="font-medium text-accent-strong underline" href={CONNECTOR_DOWNLOAD}>
+                Descarga BackupFotos.exe
+              </a>{' '}
+              (solo la primera vez) y ábrelo con doble clic. Si Windows avisa de que es desconocido: Más información → Ejecutar de todas formas.
+            </li>
+            <li>Conecta el móvil por cable y desbloquéalo. En Android elige "Transferencia de archivos"; en iPhone, pulsa "Confiar".</li>
+            <li>Si el navegador pregunta si esta web puede acceder a dispositivos de tu red local, pulsa <b>Permitir</b> (es el programa, en este mismo PC).</li>
+          </ol>
+          <p className="flex items-center gap-2 text-muted">
+            <Loader2 size={14} className="animate-spin" aria-hidden /> Esperando al programa…
+          </p>
+        </>
+      ) : connector.length === 0 ? (
+        <p className="flex items-center gap-2">
+          <Loader2 size={14} className="animate-spin" aria-hidden /> El programa está abierto, pero no ve ningún móvil. Conéctalo por cable, desbloquéalo y elige
+          "Transferencia de archivos" (en iPhone, "Confiar").
+        </p>
+      ) : (
+        <>
+          <p>El programa ve estos móviles. Añade el tuyo: se copiarán <b>todas</b> sus carpetas (cámara, capturas, WhatsApp, tarjeta SD…).</p>
+          <ul className="space-y-2">
+            {connector.map((d) => {
+              const added = cableDevices.some((c) => c.id === d.id)
+              return (
+                <li key={d.id} className="flex items-center gap-3 rounded-xl bg-surface p-2.5">
+                  <Smartphone size={16} className="shrink-0 text-accent-strong" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{d.name}</span>
+                  {added ? (
+                    <Badge tone="accent">Añadido</Badge>
+                  ) : (
+                    <Button size="sm" variant="primary" icon={Plus} onClick={() => void addCableDevice(d)}>Añadir</Button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </>
+      )}
+    </div>
+  )
+}
+
 function Step({ done, children }: { done: boolean; children: ReactNode }) {
   return (
     <li className="flex items-center gap-3 text-sm">
@@ -153,10 +253,13 @@ function Step({ done, children }: { done: boolean; children: ReactNode }) {
 }
 
 export function HomeScreen() {
-  const { sources, disks, diskStates, settings, running, addSource, addDisk, start, go, pickedFiles, addPickedFiles, clearPickedFiles } = useApp()
+  const { sources, disks, diskStates, settings, running, addSource, addDisk, start, go, pickedFiles, addPickedFiles, clearPickedFiles, cableDevices } = useApp()
   useKeys()
   const [showTips, setShowTips] = useState(false)
   const [showPhone, setShowPhone] = useState(false)
+  const [showCable, setShowCable] = useState(false)
+  // Con un móvil por cable añadido, se comprueba de vez en cuando si el programa está abierto.
+  useConnectorPolling(cableDevices.length > 0 && !showCable && !running, 5000)
 
   const disk = activeDisk()
   const connectedCount = disks.filter((d) => diskStates[d.key]?.state === 'connected').length
@@ -170,7 +273,7 @@ export function HomeScreen() {
   }
   if (disks.length === 1) warnings.push('Solo tienes un disco de backup. Lo ideal es rotar dos y guardar uno fuera de casa (regla 3-2-1).')
 
-  const sourcesReady = pickedFiles.length > 0 || (sources.length > 0 && sources.some((s) => s.perm !== 'denied'))
+  const sourcesReady = pickedFiles.length > 0 || cableDevices.length > 0 || (sources.length > 0 && sources.some((s) => s.perm !== 'denied'))
   const locked = !!disk?.encrypted && isLocked(disk)
   const ready = !!disk && sourcesReady && !locked
 
@@ -202,7 +305,7 @@ export function HomeScreen() {
                 <h2 className="text-xl font-semibold tracking-tight">Prepara tu primer backup</h2>
                 <ol className="mt-3 space-y-2">
                   <Step done={disks.length > 0}>Elige dónde guardar: un disco externo o una carpeta de este equipo</Step>
-                  <Step done={sources.length > 0 || pickedFiles.length > 0}>Añade las carpetas con tus fotos (o elige fotos sueltas)</Step>
+                  <Step done={sources.length > 0 || pickedFiles.length > 0 || cableDevices.length > 0}>Añade tu móvil por cable o las carpetas con tus fotos</Step>
                   <Step done={connectedCount > 0}>Conecta el disco (si guardas en uno externo)</Step>
                   {locked && <Step done={false}>Desbloquea el disco cifrado con su contraseña</Step>}
                 </ol>
@@ -258,7 +361,7 @@ export function HomeScreen() {
           description="Cámara, capturas, WhatsApp, Telegram…"
           actions={<Button size="sm" icon={FolderPlus} onClick={addSource} disabled={running}>Añadir</Button>}
         >
-          {sources.length === 0 && pickedFiles.length === 0 ? (
+          {sources.length === 0 && pickedFiles.length === 0 && cableDevices.length === 0 ? (
             <button onClick={addSource} className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-line p-6 text-center text-sm text-muted transition hover:border-accent hover:text-fg">
               <FolderPlus size={24} aria-hidden />
               Elige una carpeta con fotos y vídeos
@@ -266,6 +369,9 @@ export function HomeScreen() {
             </button>
           ) : (
             <ul className="space-y-2">
+              {cableDevices.map((c) => (
+                <CableRow key={c.id} id={c.id} name={c.name} />
+              ))}
               {sources.map((s) => (
                 <SourceRow key={s.key} s={s} />
               ))}
@@ -286,6 +392,16 @@ export function HomeScreen() {
 
           {/* Alternativa al selector de carpetas: móvil por USB en Windows (MTP), cámaras… */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
+            {!isAndroid && (
+              <button
+                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium ${showCable ? 'border-accent bg-accent-soft text-accent-strong' : 'border-line bg-surface hover:bg-surface-2'}`}
+                onClick={() => setShowCable(!showCable)}
+                aria-expanded={showCable}
+                disabled={running}
+              >
+                <Cable size={14} aria-hidden /> Móvil por cable
+              </button>
+            )}
             <label className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-xs font-medium hover:bg-surface-2 ${running ? 'pointer-events-none opacity-50' : ''}`}>
               <Images size={14} aria-hidden /> Elegir fotos sueltas
               <input
@@ -305,6 +421,7 @@ export function HomeScreen() {
               </button>
             )}
           </div>
+          {showCable && <CablePanel />}
           {showPhone && (
             <div className="animate-rise mt-2 space-y-2 rounded-xl bg-surface-2 p-3 text-xs leading-relaxed">
               <a
@@ -313,8 +430,8 @@ export function HomeScreen() {
               >
                 <Download size={18} className="shrink-0 text-accent-strong" aria-hidden />
                 <span>
-                  <b>Recomendado: programa para Windows.</b> Recorre TODAS las carpetas del móvil por cable (como el Explorador) y crea la carpeta
-                  "móvil - fecha y hora" con todo. Sin instalación: descárgalo y ábrelo.
+                  <b>Recomendado: botón "Móvil por cable".</b> Con BackupFotos.exe abierto (no se instala: descárgalo aquí y ábrelo), esta web lee
+                  TODAS las carpetas del móvil y crea la carpeta "móvil - fecha y hora" con todo.
                 </span>
               </a>
               <p>

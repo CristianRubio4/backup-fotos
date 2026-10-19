@@ -18,6 +18,7 @@ import { checkDisk, DISK_POLL_MS, type DiskStatus } from '../platform/disk-monit
 import { io, POOL_SIZE, workerExif, workerHasher } from '../platform/io'
 import { BATTERY_PAUSE, BATTERY_WARN, keepScreenOn, readBattery, watchBattery, type BatteryInfo, type WakeState } from '../platform/power'
 import { checkReadable, isInside, walkSource } from '../platform/walk'
+import { connectorInfo, scanCable, type CableDevice } from '../platform/connector'
 import { diskTarget, isLocked } from './keys'
 
 /** Por qué está esperando un backup interrumpido por el disco. */
@@ -59,6 +60,14 @@ interface AppState {
   pickedFiles: SourceFile[]
   addPickedFiles(list: FileList | null): void
   clearPickedFiles(): void
+  /** Móviles por cable elegidos como origen (los lee BackupFotos.exe, que debe estar abierto). */
+  cableDevices: CableDevice[]
+  /** Móviles que ve ahora el programa; null si el programa no está abierto o no se ha comprobado. */
+  connector: CableDevice[] | null
+  /** Comprueba si BackupFotos.exe está abierto y qué móviles ve. */
+  refreshConnector(): Promise<CableDevice[] | null>
+  addCableDevice(d: CableDevice): Promise<void>
+  removeCableDevice(id: string): Promise<void>
 
   init(): Promise<void>
   go(screen: Screen): void
@@ -123,6 +132,36 @@ export const useApp = create<AppState>((set, get) => ({
   battery: null,
   batteryPaused: false,
   pickedFiles: [],
+  cableDevices: [],
+  connector: null,
+
+  async refreshConnector() {
+    const info = await connectorInfo()
+    const devices = info?.devices ?? null
+    set({ connector: devices })
+    // Si el programa ve el móvil con otro identificador (vuelto a conectar), se reconoce por el nombre.
+    if (devices) {
+      const updated = get().cableDevices.map((c) => (devices.some((d) => d.id === c.id) ? c : devices.find((d) => d.name === c.name) ?? c))
+      if (updated.some((c, i) => c.id !== get().cableDevices[i].id)) {
+        set({ cableDevices: updated })
+        await db.setCableDevices(updated)
+      }
+    }
+    return devices
+  },
+
+  async addCableDevice(d) {
+    if (get().cableDevices.some((c) => c.id === d.id)) return
+    const list = [...get().cableDevices, d]
+    set({ cableDevices: list })
+    await db.setCableDevices(list)
+  },
+
+  async removeCableDevice(id) {
+    const list = get().cableDevices.filter((c) => c.id !== id)
+    set({ cableDevices: list })
+    await db.setCableDevices(list)
+  },
 
   addPickedFiles(list) {
     if (!list) return
@@ -144,16 +183,17 @@ export const useApp = create<AppState>((set, get) => ({
     onDbBlocked(() =>
       set({ notice: 'Hay otra pestaña abierta con una versión anterior de la app. Ciérrala y recarga esta página para continuar.' }),
     )
-    const [sources, disks, settings, device, history, activeDiskKey] = await Promise.all([
+    const [sources, disks, settings, device, history, activeDiskKey, cableDevices] = await Promise.all([
       db.listSources(),
       db.listDisks(),
       db.getSettings(),
       db.getDevice(),
       db.listHistory(),
       db.getActiveDisk(),
+      db.getCableDevices(),
     ])
     const views = await Promise.all(sources.map(async (s) => ({ ...s, perm: await s.handle.queryPermission({ mode: 'read' }) })))
-    set({ ready: true, sources: views, disks, settings, device, history, activeDiskKey: activeDiskKey ?? null })
+    set({ ready: true, sources: views, disks, settings, device, history, activeDiskKey: activeDiskKey ?? null, cableDevices })
     startDiskPolling()
     void readBattery().then((battery) => set({ battery }))
   },
@@ -304,11 +344,23 @@ export const useApp = create<AppState>((set, get) => ({
       else sources.push({ ...s, perm })
     }
     set({ sources: get().sources.map((s) => sources.find((x) => x.key === s.key) ?? s) })
-    if (!force && sources.length === 0 && get().pickedFiles.length === 0) {
+    // Móviles por cable: el programa BackupFotos.exe tiene que estar abierto y verlos.
+    let cable: CableDevice[] = []
+    if (!force && get().cableDevices.length) {
+      const seen = await get().refreshConnector()
+      if (!seen) skipped.push('Móvil por cable: abre BackupFotos.exe (el programa que lee el móvil) y vuelve a pulsar Hacer backup')
+      else {
+        cable = get().cableDevices.filter((c) => seen.some((d) => d.id === c.id))
+        for (const c of get().cableDevices) if (!cable.includes(c)) skipped.push(`${c.name} (no está conectado: conéctalo, desbloquéalo y elige "Transferencia de archivos")`)
+      }
+    }
+    if (!force && sources.length === 0 && get().pickedFiles.length === 0 && cable.length === 0) {
       set({
         notice: get().sources.length
-          ? `No se puede leer ninguna carpeta de fotos: ${skipped.join(', ')}. Si es un móvil conectado por USB, prueba "Elegir fotos sueltas".`
-          : 'Añade al menos una carpeta de fotos o elige fotos sueltas.',
+          ? `No se puede leer ninguna carpeta de fotos: ${skipped.join(', ')}.`
+          : get().cableDevices.length
+            ? `No se puede leer el móvil: ${skipped.join(', ')}.`
+            : 'Añade al menos una carpeta de fotos, un móvil por cable o elige fotos sueltas.',
       })
       return
     }
@@ -327,7 +379,7 @@ export const useApp = create<AppState>((set, get) => ({
     }
     if (skipped.length) set({ notice: `Se omiten estas carpetas (sin permiso o no válidas): ${skipped.join(', ')}.` })
 
-    await withBackupLock(() => runJob(disk, sources, force))
+    await withBackupLock(() => runJob(disk, sources, force, cable))
   },
 
   pause() {
@@ -459,7 +511,7 @@ export async function saveDiskIndex(disk: DiskRecord) {
  * el usuario quiere conservar) sin pasar por los filtros, y fusiona el
  * resultado con el informe actual.
  */
-async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: SourceFile[]) {
+async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: SourceFile[], cable: CableDevice[] = []) {
   let disk = initialDisk
   const { settings, device, report: previous } = useApp.getState()
   const ctl = new Controller()
@@ -482,6 +534,9 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
   })
 
   const snapshot = settings.runFolder && !disk.encrypted
+  /** Con un único móvil por cable como origen, la carpeta de la copia lleva su nombre (el que da Windows). */
+  let cableName: string | null = null
+  const onlyCable = cable.length === 1 && sources.length === 0 && useApp.getState().pickedFiles.length === 0
   let report: BackupReport
   try {
     report = await runBackup({
@@ -489,6 +544,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
       // Cada backup en su carpeta "Móvil - fecha hora" (creada dentro del destino; todo va dentro).
       openRunFolder: snapshot ? async (name) => new FsaTarget(await disk.handle.getDirectoryHandle(name, { create: true })) : undefined,
       runFolderName: force && previous?.folder ? previous.folder : undefined,
+      sourceName: () => cableName,
       diskName: disk.name,
       encrypted: !!disk.encrypted,
       scan: force
@@ -499,6 +555,19 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
             const unreadable: Array<{ relPath: string; reason: string }> = []
             const dirs: string[] = []
             files.push(...useApp.getState().pickedFiles)
+            for (const c of cable) {
+              try {
+                const r = await scanCable(c, uniqueName(c.name, [...sources.map((s) => s.name), PICKED_LABEL]), ctl, onFound, files.length)
+                files.push(...r.files)
+                ignored.push(...r.ignored)
+                unreadable.push(...(r.unreadable ?? []))
+                dirs.push(...(r.dirs ?? []))
+                if (onlyCable) cableName = r.name
+              } catch (err) {
+                if ((err as Error)?.name === 'CancelledError') throw err
+                unreadable.push({ relPath: c.name, reason: `${friendlyError(err)}. No se ha copiado nada de este móvil.` })
+              }
+            }
             for (const s of sources) {
               try {
                 const r = await walkSource(s.handle, disk.handle, ctl, onFound, { label: s.name, cacheKeyPrefix: s.key, baseCount: files.length })
