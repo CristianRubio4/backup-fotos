@@ -56,6 +56,18 @@ describe('una carpeta por copia', () => {
     expect(r2.copied[0].diskPath).toBe('Copia 2026-10-19 18h42/2024-05-17_103000_IMG_2.jpg')
   })
 
+  it('si las fotos son de un móvil, la carpeta lleva su nombre (del EXIF)', async () => {
+    const t = new MemoryTarget()
+    const exif = async (b: Blob) => ((await b.text()).startsWith('wa') ? { date: null } : { date: null, make: 'samsung', model: 'SM-S911B' })
+    const r = await run(t, [src('DCIM/IMG_1.jpg', 'foto 1', MAY), src('DCIM/IMG_2.jpg', 'foto 22', MAY), src('WhatsApp/IMG-WA.jpg', 'wa sin exif', MAY)], {
+      settings: { runFolder: true },
+      readExif: exif,
+      now: () => new Date(2026, 9, 19, 14, 30),
+    })
+    expect(r.folder).toBe('Samsung SM-S911B - 2026-10-19 14h30')
+    expect(t.mediaPaths().every((p) => p.startsWith('Samsung SM-S911B - 2026-10-19 14h30/'))).toBe(true)
+  })
+
   it('con "una carpeta por dispositivo", el dispositivo va dentro de la copia', async () => {
     const t = new MemoryTarget()
     await run(t, [src('IMG_1.jpg', 'a', MAY)], { device: { id: 'm', name: 'Móvil de Ana' }, settings: { runFolder: true, layout: 'per-device' }, now: () => new Date(2026, 9, 19, 9, 5) })

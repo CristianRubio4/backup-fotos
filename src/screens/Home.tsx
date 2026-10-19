@@ -326,9 +326,9 @@ export function HomeScreen() {
               </ol>
               <p className="text-muted">En el móvil, desbloquéalo y elige "Transferencia de archivos" al conectarlo. En iPhone, usa "Elegir fotos sueltas" o la app Fotos de Windows.</p>
               <p className="text-muted">
-                <b>¿Windows dice "Enlace a Windows está desactivado"?</b> Has elegido el móvil conectado por wifi (aparece en "Dispositivos
-                móviles"), no por cable. Elige el que sale en <b>Este equipo</b> con el cable puesto, o activa en el móvil la app "Enlace a
-                Windows" y permite el acceso a archivos.
+                <b>¿Windows dice "Enlace a Windows está desactivado"?</b> Aunque esté por cable, Windows no deja que un navegador abra el móvil
+                como carpeta. Usa <b>Elegir fotos sueltas</b>: esa ventana sí entra en el móvil. La carpeta del backup se llamará con el nombre del
+                móvil y la fecha y hora.
               </p>
             </div>
           )}

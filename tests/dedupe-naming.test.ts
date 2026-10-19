@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { needsPreHash, planDedupe } from '../src/core/dedupe'
 import type { ManifestEntry } from '../src/core/manifest/schema'
-import { datedName, folderFor, NO_DATE_DIR, pickDate, sanitizeName, withSuffix } from '../src/core/naming'
+import { cameraName, datedName, dominantCamera, folderFor, NO_DATE_DIR, pickDate, runFolderName, sanitizeName, withSuffix } from '../src/core/naming'
 import { src } from './fakes'
 
 describe('needsPreHash', () => {
@@ -54,6 +54,19 @@ describe('naming', () => {
     expect(pickDate(null, 0, now).date).toBeNull()
     expect(pickDate(null, new Date(2030, 0, 1).getTime(), now).date).toBeNull()
     expect(pickDate(new Date(1980, 0, 1), 0, now).source).toBe('none')
+  })
+
+  it('nombre del móvil para la carpeta de la copia', () => {
+    expect(cameraName('Apple', 'iPhone 15 Pro')).toBe('iPhone 15 Pro')
+    expect(cameraName('samsung', 'SM-S911B')).toBe('Samsung SM-S911B')
+    expect(cameraName('Google', 'Pixel 8')).toBe('Google Pixel 8')
+    expect(cameraName('Xiaomi', 'Xiaomi 13T')).toBe('Xiaomi 13T')
+    expect(cameraName(undefined, undefined)).toBeNull()
+    expect(dominantCamera([{ make: 'Apple', model: 'iPhone 15 Pro' }, { make: 'Apple', model: 'iPhone 15 Pro' }, { make: 'Canon', model: 'EOS R6' }, {}])).toBe('iPhone 15 Pro')
+    expect(dominantCamera([{ make: 'Apple', model: 'iPhone 12' }, { make: 'Canon', model: 'EOS R6' }, { make: 'Sony', model: 'A7' }])).toBeNull()
+    expect(runFolderName(new Date(2026, 9, 19, 14, 5), 'iPhone 15 Pro')).toBe('iPhone 15 Pro - 2026-10-19 14h05')
+    expect(runFolderName(new Date(2026, 9, 19, 14, 5), 'Cámara: "casa"')).toBe('Cámara_ _casa_ - 2026-10-19 14h05')
+    expect(runFolderName(new Date(2026, 9, 19, 14, 5))).toBe('Copia 2026-10-19 14h05')
   })
 
   it('carpetas año/mes o "Sin fecha"', () => {

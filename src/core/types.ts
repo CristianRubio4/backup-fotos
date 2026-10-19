@@ -70,6 +70,8 @@ export interface ExifInfo {
   height?: number
   /** Fabricante de la cámara (p. ej. "Apple"). */
   make?: string
+  /** Modelo (p. ej. "iPhone 15 Pro"), para nombrar la carpeta de la copia. */
+  model?: string
 }
 
 export type ExifReader = (file: Blob) => Promise<ExifInfo>

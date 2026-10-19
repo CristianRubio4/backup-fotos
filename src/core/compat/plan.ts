@@ -7,7 +7,7 @@ import { findLivePhotos } from '../analysis/pairing'
 import type { ReportItem } from '../backup/engine'
 import type { ManifestEntry } from '../manifest/schema'
 import { extOf, isVideo } from '../media'
-import { datedName, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
+import { datedName, dominantCamera, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
 import type { Device, Settings } from '../settings'
 import { CancelledError, type Analyzer, type ExifInfo, type ExifReader, type Hasher, type RunControl, type SourceFile } from '../types'
 
@@ -143,7 +143,7 @@ export async function planCompat(opts: {
   // ---- Rutas en el ZIP ----
   const used = new Set<string>()
   const placed = new Map<SourceFile, string>()
-  const runFolder = settings.runFolder ? runFolderName(now()) : null
+  const runFolder = settings.runFolder ? runFolderName(now(), dominantCamera([...analysis.values()].map((a) => a.exif))) : null
   const deviceDir = settings.layout === 'per-device' ? device.name : null
   const ordered = [...analysis.keys()].sort((a, b) => Number(photoOfVideo.has(a)) - Number(photoOfVideo.has(b)))
   for (const f of ordered) {

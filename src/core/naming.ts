@@ -39,9 +39,42 @@ export function folderFor(date: Date | null) {
   return date ? `${date.getFullYear()}/${pad(date.getMonth() + 1)}` : NO_DATE_DIR
 }
 
-/** Carpeta de cada backup: "Copia 2026-10-19 14h30" (ordenable y sin ":", que Windows no admite). */
-export function runFolderName(d: Date) {
-  return `Copia ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}h${pad(d.getMinutes())}`
+/**
+ * Carpeta de cada backup: "iPhone 15 Pro - 2026-10-19 14h30" con el nombre del
+ * móvil, o "Copia 2026-10-19 14h30" si no se sabe (sin ":", que Windows no admite).
+ */
+export function runFolderName(d: Date, label?: string | null) {
+  const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}h${pad(d.getMinutes())}`
+  const name = label ? sanitizeName(label).trim() : ''
+  return name ? `${name} - ${stamp}` : `Copia ${stamp}`
+}
+
+/** Nombre legible de la cámara: Apple + "iPhone 15 Pro" → "iPhone 15 Pro"; samsung + "SM-S911B" → "Samsung SM-S911B". */
+export function cameraName(make?: string, model?: string) {
+  const mk = make?.replace(/\s+/g, ' ').trim() ?? ''
+  const md = model?.replace(/\s+/g, ' ').trim() ?? ''
+  if (!md) return mk ? mk.charAt(0).toUpperCase() + mk.slice(1) : null
+  if (!mk || /^apple$/i.test(mk) || md.toLowerCase().startsWith(mk.toLowerCase().split(' ')[0])) return md
+  return `${mk.charAt(0).toUpperCase()}${mk.slice(1)} ${md}`
+}
+
+/**
+ * El móvil o cámara del que vienen la mayoría de las fotos (según el EXIF), o
+ * null si no hay ninguno claro (fotos sin EXIF, de muchos dispositivos…).
+ */
+export function dominantCamera(exifs: Array<{ make?: string; model?: string }>) {
+  const counts = new Map<string, number>()
+  let withCamera = 0
+  for (const e of exifs) {
+    const n = cameraName(e.make, e.model)
+    if (!n) continue
+    withCamera++
+    counts.set(n, (counts.get(n) ?? 0) + 1)
+  }
+  let best: string | null = null
+  let max = 0
+  for (const [n, c] of counts) if (c > max) [best, max] = [n, c]
+  return best && max * 2 >= withCamera ? best : null
 }
 
 /**

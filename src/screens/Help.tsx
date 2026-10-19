@@ -28,7 +28,8 @@ export function HelpScreen() {
       <Section title="Cómo funciona">
         <p>
           La app recorre la carpeta de fotos, calcula una huella (hash SHA-256) de cada archivo y copia al disco solo lo que aún no está.
-          Cada backup guarda lo nuevo en su propia carpeta, con el día y la hora de la copia (<b>Copia 2026-10-19 14h30</b>). Si lo
+          Cada backup guarda lo nuevo en su propia carpeta, con el nombre del móvil (leído de las propias fotos) y el día y la hora de la
+          copia (<b>iPhone 15 Pro - 2026-10-19 14h30</b>; si no se sabe el móvil, <b>Copia 2026-10-19 14h30</b>). Si lo
           prefieres, en Ajustes puedes ordenarlas en carpetas <b>año/mes</b> según la fecha de la foto. Al terminar, en el informe pulsa{' '}
           <b>Copiados</b> para ver una a una las fotos de esa copia.
         </p>
@@ -148,9 +149,9 @@ export function HelpScreen() {
           Almacenamiento interno → DCIM → Camera, pulsa Ctrl + A y Abrir.
         </p>
         <p>
-          <b>"Enlace a Windows está desactivado en el móvil":</b> es un aviso de Windows, no de esta app. Sale al elegir el móvil que Windows
-          muestra en "Dispositivos móviles", que se conecta por wifi con la app Enlace a Windows. Elige mejor el móvil que aparece en{' '}
-          <b>Este equipo</b> con el cable USB conectado, o abre en el móvil la app "Enlace a Windows", actívala y permite el acceso a archivos.
+          <b>"Enlace a Windows está desactivado en el móvil":</b> es un aviso de Windows, no de esta app. Windows no deja que un navegador abra
+          un móvil como carpeta (ni por cable ni por wifi): usa <b>Elegir fotos sueltas</b>, cuya ventana sí entra en el móvil, o usa la app
+          directamente en el móvil con Chrome.
         </p>
         <p>
           <b>En el propio móvil (Chrome en Android):</b> añade DCIM (y WhatsApp, capturas…) como origen y guarda en un disco conectado por USB-OTG

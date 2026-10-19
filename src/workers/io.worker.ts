@@ -142,7 +142,7 @@ const api = {
   async readExif(file: Blob): Promise<ExifInfo> {
     const head = await file.slice(0, 512 * 1024).arrayBuffer()
     const data = await exifr.parse(head, {
-      pick: ['DateTimeOriginal', 'CreateDate', 'DateTimeDigitized', 'ExifImageWidth', 'ExifImageHeight', 'PixelXDimension', 'PixelYDimension', 'Make'],
+      pick: ['DateTimeOriginal', 'CreateDate', 'DateTimeDigitized', 'ExifImageWidth', 'ExifImageHeight', 'PixelXDimension', 'PixelYDimension', 'Make', 'Model'],
     })
     const d = data?.DateTimeOriginal ?? data?.CreateDate ?? data?.DateTimeDigitized
     const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : undefined)
@@ -151,6 +151,7 @@ const api = {
       width: num(data?.ExifImageWidth ?? data?.PixelXDimension),
       height: num(data?.ExifImageHeight ?? data?.PixelYDimension),
       make: typeof data?.Make === 'string' ? data.Make.trim() : undefined,
+      model: typeof data?.Model === 'string' ? data.Model.trim() : undefined,
     }
   },
 

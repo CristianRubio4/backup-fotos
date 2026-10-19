@@ -6,7 +6,7 @@ import { ensureDiskId } from '../disk'
 import type { EntryStatus, ManifestEntry } from '../manifest/schema'
 import { ManifestStore, type ManifestRecovery } from '../manifest/store'
 import { extOf, isVideo } from '../media'
-import { datedName, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
+import { datedName, dominantCamera, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
 import { mapPool } from '../pool'
 import { incorporateDiskFiles } from './incorporate'
 import type { Device, Settings } from '../settings'
@@ -68,7 +68,7 @@ export interface BackupReport {
   incorporated: number
   bytesCopied: number
   manifest: ManifestRecovery | null
-  /** Carpeta de esta copia en el disco ("Copia 2026-10-19 14h30"), si se usa una por backup. */
+  /** Carpeta de esta copia en el disco ("iPhone 15 Pro - 2026-10-19 14h30"), si se usa una por backup. */
   folder?: string
 }
 
@@ -172,8 +172,6 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     bytesCopied: 0,
     manifest: null,
   }
-  // En un disco cifrado los nombres son aleatorios: no hay carpetas con fecha.
-  if (settings.runFolder && !input.encrypted) report.folder = runFolderName(new Date(report.startedAt))
 
   // ---- Progreso ----
   const counters: Counters = { copied: 0, duplicates: 0, discarded: 0, unverified: 0, errors: 0 }
@@ -426,6 +424,12 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     toCopy.sort((a, b) => Number(photoOfVideo.has(a.file)) - Number(photoOfVideo.has(b.file)))
     progress.totalBytes = baseBytes + sum(preHash) + sum(toCopy.map((h) => h.file)) * copyFactor
     progress.doneBytes = Math.min(progress.doneBytes, progress.totalBytes)
+
+    // Carpeta de esta copia: "iPhone 15 Pro - 2026-10-19 14h30" (el móvil se saca del EXIF de las fotos)
+    // o "Copia 2026-10-19 14h30". En un disco cifrado los nombres son aleatorios: no hay carpeta con fecha.
+    if (settings.runFolder && !input.encrypted) {
+      report.folder = runFolderName(new Date(report.startedAt), dominantCamera(toCopy.map((h) => analysis.get(h.file)!.exif)))
+    }
 
     // ---- Copia y verificación ----
     setPhase('copy', toCopy.length)

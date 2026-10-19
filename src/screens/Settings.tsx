@@ -66,7 +66,7 @@ export function SettingsScreen() {
       <Card title="Estructura en el disco" icon={FolderTree}>
         <label className="flex items-center gap-2 py-1 text-sm">
           <input type="radio" name="runFolder" className="accent-[var(--accent)]" checked={settings.runFolder} onChange={() => saveSettings({ ...settings, runFolder: true })} />
-          Una carpeta por cada copia: <code className="text-xs">{runFolderName(new Date())}/…</code>
+          Una carpeta por cada copia: <code className="text-xs">{runFolderName(new Date(), 'iPhone 15 Pro')}/…</code>
         </label>
         <label className="flex items-center gap-2 py-1 text-sm">
           <input type="radio" name="runFolder" className="accent-[var(--accent)]" checked={!settings.runFolder} onChange={() => saveSettings({ ...settings, runFolder: false })} />
@@ -79,7 +79,8 @@ export function SettingsScreen() {
           onChange={(v) => saveSettings({ ...settings, layout: v ? 'per-device' : 'together' })}
         />
         <p className="mt-1 text-xs text-muted">
-          En la carpeta de cada copia solo están las fotos nuevas de ese backup. Los duplicados se detectan siempre entre todas las copias y
+          La carpeta de cada copia lleva el nombre del móvil o cámara del que vienen las fotos (se lee de las propias fotos; si no se sabe,
+          se llama "Copia") y el día y la hora. Solo contiene las fotos nuevas de ese backup. Los duplicados se detectan siempre entre todas las copias y
           dispositivos: una foto que ya está en el disco no se vuelve a copiar. El cambio afecta a las copias nuevas.
         </p>
       </Card>
