@@ -17,6 +17,13 @@ public sealed class MtpSource : IMediaSource, IDisposable
     MediaDevice _device;
     readonly string _id;
 
+    /// <summary>
+    /// Archivos vistos al recorrer el móvil. Leerlos por su ruta obliga a la librería a buscarlos
+    /// carpeta a carpeta, listando cada carpeta entera (en WhatsApp/Sent, miles de archivos por
+    /// cada foto): ~1 s por archivo. Con el objeto ya encontrado, se lee directamente.
+    /// </summary>
+    readonly Dictionary<string, MediaFileInfo> _known = new(StringComparer.Ordinal);
+
     public MtpSource(MediaDevice device)
     {
         _device = device;
@@ -49,6 +56,8 @@ public sealed class MtpSource : IMediaSource, IDisposable
     /// <summary>Cierra la conexión rota y abre otra con el mismo móvil (espera un poco si aún no ha vuelto).</summary>
     void Reconnect()
     {
+        // Los objetos de la conexión anterior ya no valen.
+        _known.Clear();
         try
         {
             if (_device.IsConnected) _device.Disconnect();
@@ -110,7 +119,11 @@ public sealed class MtpSource : IMediaSource, IDisposable
         foreach (var e in info.EnumerateFileSystemInfos())
         {
             var path = FolderSource.Join(dir, e.Name);
-            if (e is MediaFileInfo f) list.Add(new SourceEntry(path, f.Name, false, (long)f.Length, f.LastWriteTime ?? f.CreationTime));
+            if (e is MediaFileInfo f)
+            {
+                _known[path] = f;
+                list.Add(new SourceEntry(path, f.Name, false, (long)f.Length, f.LastWriteTime ?? f.CreationTime));
+            }
             else list.Add(new SourceEntry(path, e.Name, true, 0, null));
         }
         return list;
@@ -126,7 +139,13 @@ public sealed class MtpSource : IMediaSource, IDisposable
         ct.ThrowIfCancellationRequested();
         try
         {
-            _device.DownloadFile(DevicePath(file.Path), destination);
+            if (_known.TryGetValue(file.Path, out var info))
+            {
+                // Directo, sin buscarlo por su ruta.
+                using var s = info.OpenRead();
+                s.CopyTo(destination, 1 << 20);
+            }
+            else _device.DownloadFile(DevicePath(file.Path), destination);
         }
         catch (Exception ex) when (Retryable(ex))
         {
