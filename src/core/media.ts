@@ -37,5 +37,6 @@ export const SKIP_DIRS = new Set([
 export function skipDir(name: string, relPath: string) {
   const n = name.toLowerCase()
   if (SKIP_DIRS.has(n) || name.startsWith('.')) return true
-  return /(^|\/)android\/(data|obb)$/i.test(relPath)
+  // WhatsApp/Media/WhatsApp Images/Sent (y Video, GIF…): fotos que tú has enviado; no se copian.
+  return /(^|\/)android\/(data|obb)$/i.test(relPath) || /(^|\/)WhatsApp [^/]+\/Sent$/i.test(relPath)
 }

@@ -54,8 +54,8 @@ public class BackupTests
     public void Encuentra_todas_las_fotos_de_todas_las_carpetas()
     {
         var scan = Scanner.Scan(TypicalPhone(), default);
-        Assert.Equal(30 + 5 + 8 + 1 + 6 + 1 + 1 + 1, scan.Files.Count);
-        Assert.Contains(scan.Files, f => f.Path == "Almacenamiento interno/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Sent/IMG-WA-sent.jpg");
+        Assert.Equal(30 + 5 + 8 + 1 + 6 + 1 + 1, scan.Files.Count); // sin WhatsApp Images/Sent
+        Assert.DoesNotContain(scan.Files, f => f.Path.Contains("/Sent/"));
         Assert.Contains(scan.Files, f => f.Path == "Tarjeta SD/DCIM/Camera/IMG_SD.jpg");
         Assert.Contains(scan.Files, f => f.Path == "Almacenamiento interno/Download/Viaje a Roma 2024.06/roma.jpeg");
         Assert.DoesNotContain(scan.Files, f => f.Path.Contains("/Android/data/") || f.Path.Contains("/Android/obb/") || f.Path.Contains("/.thumbnails/"));
@@ -81,13 +81,13 @@ public class BackupTests
         using var dest = new TempDir();
         var r = Run(TypicalPhone(), dest.Path);
         Assert.Equal(Outcome.Completed, r.Outcome);
-        Assert.Equal(53, r.Copied);
+        Assert.Equal(52, r.Copied);
         Assert.Empty(r.Errors);
         // Una sola carpeta en el destino; nada más.
         Assert.Equal(new[] { "Galaxy S23 - 2026-10-19 14h30" }, Directory.EnumerateFileSystemEntries(dest.Path).Select(Path.GetFileName));
         var folder = Path.Combine(dest.Path, "Galaxy S23 - 2026-10-19 14h30");
         Assert.Equal(r.Folder, folder);
-        Assert.Equal(53, MediaFiles(folder).Count);
+        Assert.Equal(52, MediaFiles(folder).Count);
         // Los archivos de control, dentro de la carpeta de la copia.
         Assert.True(File.Exists(Path.Combine(folder, ".backup-disk-id")));
         Assert.True(File.Exists(Path.Combine(folder, ".backup-manifest.json")));
