@@ -616,6 +616,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
                 unreadable.push(...(r.unreadable ?? []))
                 dirs.push(...(r.dirs ?? []))
                 if (onlyCable) cableName = r.name
+                void db.setSentStats(c.name, { ...r.sent, measuredAt: new Date().toISOString() })
               } catch (err) {
                 if ((err as Error)?.name === 'CancelledError') throw err
                 unreadable.push({ relPath: c.name, reason: `${friendlyError(err)}. No se ha copiado nada de este móvil.` })
@@ -695,6 +696,9 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
     await useApp.getState().updateDisk(disk.key, { lastBackupAt: report.finishedAt, lastBackupFiles: report.copied.length + report.alreadyOnDisk.length })
   }
   await saveDiskIndex(disk)
+  // Velocidad real del último backup (para estimar cuánto tardaría añadir algo, p. ej. WhatsApp Sent).
+  const secs = (new Date(report.finishedAt).getTime() - new Date(report.startedAt).getTime()) / 1000
+  if (report.bytesCopied > 50 * 1024 ** 2 && secs > 30) await db.setLastSpeed(report.bytesCopied / secs)
   // Copia a medias: se recuerda para ofrecer continuarla en la misma carpeta.
   if (!force && report.folder) {
     const pending = report.outcome === 'completed' ? null : { diskKey: disk.key, folder: report.folder, startedAt: report.startedAt, copied: report.copied.length + report.alreadyOnDisk.length }

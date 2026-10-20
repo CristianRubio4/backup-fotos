@@ -46,6 +46,12 @@ public static partial class Media
     [GeneratedRegex(@"(^|/)android/(data|obb)$", RegexOptions.IgnoreCase)]
     private static partial Regex AndroidPrivate();
 
+    /// <summary>¿Está el archivo en una carpeta Sent de WhatsApp (lo que tú has enviado)?</summary>
+    public static bool InWhatsAppSent(string filePath) => WhatsAppSentFile().IsMatch(filePath);
+
+    [GeneratedRegex(@"(^|/)WhatsApp [^/]+/Sent/", RegexOptions.IgnoreCase)]
+    private static partial Regex WhatsAppSentFile();
+
     /// <summary>WhatsApp/Media/WhatsApp Images/Sent (y Video, GIF…): fotos que tú has enviado (se pueden excluir en Ajustes).</summary>
     [GeneratedRegex(@"(^|/)WhatsApp [^/]+/Sent$", RegexOptions.IgnoreCase)]
     private static partial Regex WhatsAppSent();

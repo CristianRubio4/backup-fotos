@@ -133,7 +133,7 @@ public sealed class ConnectorServer : IDisposable
                     WriteJson(stream, origin!, new { app = AppId, version = _version, devices = _hub.List() });
                     break;
                 case "/v1/scan":
-                    Scan(stream, origin!, Required(req, "device"), req.Query.GetValueOrDefault("sent") == "0");
+                    Scan(stream, origin!, Required(req, "device"));
                     break;
                 case "/v1/file":
                     ServeFile(stream, origin!, Required(req, "device"), Required(req, "path"));
@@ -162,7 +162,8 @@ public sealed class ConnectorServer : IDisposable
 
     // ---- Escaneo: el recorrido completo del móvil, enviado según avanza ----
 
-    void Scan(Stream stream, string origin, string deviceId, bool skipSent)
+    /// <summary>Se recorre todo, también las carpetas Sent de WhatsApp (marcadas): la web decide si las copia y sabe cuánto ocupan.</summary>
+    void Scan(Stream stream, string origin, string deviceId)
     {
         Activity?.Invoke("Buscando fotos en el móvil…");
         var headSent = false;
@@ -192,10 +193,10 @@ public sealed class ConnectorServer : IDisposable
                     lastDirs = s.Dirs.Count;
                     Line(new { t = "dir", path = dir, dirs = s.Dirs.Count, found = s.Files.Count });
                     Activity?.Invoke($"Buscando fotos en el móvil: {s.Dirs.Count:N0} carpetas revisadas, {s.Files.Count:N0} fotos y vídeos encontrados");
-                }, skipSent: skipSent);
+                });
                 lock (_entries) _entries[deviceId] = result.Files.ToDictionary(f => f.Path, StringComparer.Ordinal);
                 foreach (var f in result.Files)
-                    Line(new { t = "file", path = f.Path, name = f.Name, size = f.Size, mtime = f.Modified is { } m ? new DateTimeOffset(m).ToUnixTimeMilliseconds() : 0 });
+                    Line(new { t = "file", path = f.Path, name = f.Name, size = f.Size, mtime = f.Modified is { } m ? new DateTimeOffset(m).ToUnixTimeMilliseconds() : 0, sent = Media.InWhatsAppSent(f.Path) });
                 foreach (var i in result.Ignored) Line(new { t = "ignored", path = i });
                 foreach (var (path, reason) in result.Unreadable) Line(new { t = "error", path, reason });
                 Line(new { t = "done", name = source.Name, dirs = result.Dirs, found = result.Files.Count });

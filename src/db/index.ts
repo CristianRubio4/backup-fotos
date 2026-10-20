@@ -121,6 +121,12 @@ async function set(key: string, value: unknown) {
   await (await dbp).put('kv', value, key)
 }
 
+export interface SentStats {
+  count: number
+  bytes: number
+  measuredAt: string
+}
+
 export interface PendingRun {
   diskKey: string
   folder: string
@@ -137,6 +143,23 @@ export const db = {
 
   async setCableDevices(list: Array<{ id: string; name: string }>) {
     await set('cableDevices', list)
+  },
+
+  /** Lo que ocupa la carpeta Sent de WhatsApp en cada móvil (medido en el último escaneo) y la velocidad del último backup. */
+  async getSentStats(): Promise<Record<string, SentStats>> {
+    return (await get<Record<string, SentStats>>('sentStats')) ?? {}
+  },
+
+  async setSentStats(name: string, stats: SentStats) {
+    await set('sentStats', { ...(await db.getSentStats()), [name]: stats })
+  },
+
+  async getLastSpeed(): Promise<number | null> {
+    return (await get<number>('lastSpeed')) ?? null
+  },
+
+  async setLastSpeed(bytesPerSec: number) {
+    await set('lastSpeed', bytesPerSec)
   },
 
   /** Copia que se quedó a medias (para "Continuar la copia"). */

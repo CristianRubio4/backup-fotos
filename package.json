@@ -18,6 +18,8 @@
     "idb": "^8.0.4",
     "libheif-js": "^1.23.5",
     "lucide-react": "^1.54.0",
+    "peerjs": "^1.5.5",
+    "qrcode-generator": "^2.0.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zustand": "^5.0.15"
