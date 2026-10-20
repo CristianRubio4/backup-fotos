@@ -96,10 +96,14 @@ describe('escaneo de un móvil u otro dispositivo', () => {
       ])])])])]),
     ])
     const r = await walk(root, 'Móvil')
-    expect(r.files).toHaveLength(300 + 20 + 40 + 5 + 7 + 3 + 2 + 4 + 50 + 6) // sin WhatsApp Images/Sent (fotos enviadas)
+    expect(r.files).toHaveLength(300 + 20 + 40 + 5 + 7 + 3 + 2 + 4 + 50 + 10 + 6)
     expect(r.ignored).toEqual(['Móvil/Download/factura.pdf'])
     expect(r.files.some((f) => f.relPath === 'Móvil/DCIM/100ANDRO/DSC_4.JPG')).toBe(true)
-    expect(r.files.some((f) => f.relPath.includes('/Sent/'))).toBe(false)
+    expect(r.files.some((f) => f.relPath === 'Móvil/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Sent/IMG-WA-sent_9.jpg')).toBe(true)
+    // Con la opción de no copiar lo enviado:
+    const noSent = await walkSource(root as unknown as FileSystemDirectoryHandle, null, noControl, () => {}, { label: 'Móvil', skipSent: true })
+    expect(noSent.files.some((f) => f.relPath.includes('/Sent/'))).toBe(false)
+    expect(noSent.files).toHaveLength(r.files.length - 10)
     expect(r.dirs).toContain('Móvil/DCIM/Camera')
     expect(r.unreadable).toEqual([])
   })

@@ -40,13 +40,13 @@ public static partial class Media
     /// en un móvil, Android/data y Android/obb (datos internos de las apps). Android/media
     /// sí se recorre: ahí están las fotos de WhatsApp.
     /// </summary>
-    public static bool SkipDir(string name, string relPath) =>
-        name.StartsWith('.') || name.StartsWith('$') || SystemDirs.Contains(name) || AndroidPrivate().IsMatch(relPath) || WhatsAppSent().IsMatch(relPath);
+    public static bool SkipDir(string name, string relPath, bool skipSent = false) =>
+        name.StartsWith('.') || name.StartsWith('$') || SystemDirs.Contains(name) || AndroidPrivate().IsMatch(relPath) || (skipSent && WhatsAppSent().IsMatch(relPath));
 
     [GeneratedRegex(@"(^|/)android/(data|obb)$", RegexOptions.IgnoreCase)]
     private static partial Regex AndroidPrivate();
 
-    /// <summary>WhatsApp/Media/WhatsApp Images/Sent (y Video, GIF…): fotos que tú has enviado; no se copian.</summary>
+    /// <summary>WhatsApp/Media/WhatsApp Images/Sent (y Video, GIF…): fotos que tú has enviado (se pueden excluir en Ajustes).</summary>
     [GeneratedRegex(@"(^|/)WhatsApp [^/]+/Sent$", RegexOptions.IgnoreCase)]
     private static partial Regex WhatsAppSent();
 }

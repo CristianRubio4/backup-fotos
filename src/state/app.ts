@@ -608,7 +608,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
             files.push(...useApp.getState().pickedFiles)
             for (const c of cable) {
               try {
-                const r = await scanCable(c, uniqueName(c.name, [...sources.map((s) => s.name), PICKED_LABEL]), ctl, onFound, files.length)
+                const r = await scanCable(c, uniqueName(c.name, [...sources.map((s) => s.name), PICKED_LABEL]), ctl, onFound, files.length, { skipSent: !settings.whatsappSent })
                 files.push(...r.files)
                 ignored.push(...r.ignored)
                 unreadable.push(...(r.unreadable ?? []))
@@ -621,7 +621,7 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
             }
             for (const s of sources) {
               try {
-                const r = await walkSource(s.handle, disk.handle, ctl, onFound, { label: s.name, cacheKeyPrefix: s.key, baseCount: files.length })
+                const r = await walkSource(s.handle, disk.handle, ctl, onFound, { label: s.name, cacheKeyPrefix: s.key, baseCount: files.length, skipSent: !settings.whatsappSent })
                 files.push(...r.files)
                 ignored.push(...r.ignored)
                 unreadable.push(...(r.unreadable ?? []))

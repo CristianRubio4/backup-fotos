@@ -35,6 +35,8 @@ export interface Settings {
   onlyNew: boolean
   /** Con una carpeta por copia: misma estructura de carpetas y nombres que en el origen. */
   keepStructure: boolean
+  /** Copiar también las fotos y vídeos que has enviado por WhatsApp (carpetas Sent). */
+  whatsappSent: boolean
   /** Avisar si un disco lleva más de estos días sin backup. */
   staleDays: number
   /** Recordar comprobar la integridad del disco cada estos meses. */
@@ -66,6 +68,7 @@ export const DEFAULT_SETTINGS: Settings = {
   runFolder: true,
   onlyNew: false,
   keepStructure: true,
+  whatsappSent: true,
   staleDays: 30,
   integrityMonths: 6,
   zipBatchMB: typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 300 : 1000,

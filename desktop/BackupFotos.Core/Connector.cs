@@ -133,7 +133,7 @@ public sealed class ConnectorServer : IDisposable
                     WriteJson(stream, origin!, new { app = AppId, version = _version, devices = _hub.List() });
                     break;
                 case "/v1/scan":
-                    Scan(stream, origin!, Required(req, "device"));
+                    Scan(stream, origin!, Required(req, "device"), req.Query.GetValueOrDefault("sent") == "0");
                     break;
                 case "/v1/file":
                     ServeFile(stream, origin!, Required(req, "device"), Required(req, "path"));
@@ -162,7 +162,7 @@ public sealed class ConnectorServer : IDisposable
 
     // ---- Escaneo: el recorrido completo del móvil, enviado según avanza ----
 
-    void Scan(Stream stream, string origin, string deviceId)
+    void Scan(Stream stream, string origin, string deviceId, bool skipSent)
     {
         Activity?.Invoke("Buscando fotos en el móvil…");
         var headSent = false;
@@ -186,13 +186,13 @@ public sealed class ConnectorServer : IDisposable
                 var lastDirs = 0;
                 // Primera línea enseguida: la web sabe que el conector está trabajando.
                 Line(new { t = "start", name = source.Name });
-                var result = Scanner.Scan(source, _stop.Token, (s, dir) =>
+                var result = Scanner.Scan(source, _stop.Token, onDir: (s, dir) =>
                 {
                     if (s.Dirs.Count - lastDirs < 5) return;
                     lastDirs = s.Dirs.Count;
                     Line(new { t = "dir", path = dir, dirs = s.Dirs.Count, found = s.Files.Count });
                     Activity?.Invoke($"Buscando fotos en el móvil: {s.Dirs.Count:N0} carpetas revisadas, {s.Files.Count:N0} fotos y vídeos encontrados");
-                });
+                }, skipSent: skipSent);
                 lock (_entries) _entries[deviceId] = result.Files.ToDictionary(f => f.Path, StringComparer.Ordinal);
                 foreach (var f in result.Files)
                     Line(new { t = "file", path = f.Path, name = f.Name, size = f.Size, mtime = f.Modified is { } m ? new DateTimeOffset(m).ToUnixTimeMilliseconds() : 0 });

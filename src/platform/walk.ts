@@ -20,7 +20,7 @@ export async function walkSource(
   control: RunControl,
   onFound: (count: number) => void,
   /** Con varios orígenes: nombre del origen como primer tramo de la ruta, y clave para la caché de hashes. */
-  opts: { label?: string; cacheKeyPrefix?: string; baseCount?: number } = {},
+  opts: { label?: string; cacheKeyPrefix?: string; baseCount?: number; skipSent?: boolean } = {},
 ): Promise<ScanResult> {
   const files: SourceFile[] = []
   const ignored: string[] = []
@@ -43,7 +43,7 @@ export async function walkSource(
         const rel = prefix ? `${prefix}/${name}` : name
         if (handle.kind === 'directory') {
           // Carpetas del sistema y ocultas (.thumbnails, .trashed, .pending…): nunca contienen fotos del usuario.
-          if (skipDir(name, rel)) continue
+          if (skipDir(name, rel, opts.skipSent)) continue
           const sub = handle as FileSystemDirectoryHandle
           try {
             if (exclude && (await sub.isSameEntry(exclude))) continue

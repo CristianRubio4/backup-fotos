@@ -52,11 +52,11 @@ async function readFile(device: string, path: string): Promise<Blob> {
  * Recorre el móvil entero (todas sus carpetas, lo hace el programa) y devuelve
  * sus fotos y vídeos como archivos de origen. `label` es el primer tramo de la ruta.
  */
-export async function scanCable(device: CableDevice, label: string, control: RunControl, onFound: (count: number) => void, baseCount = 0): Promise<ScanResult & { name: string }> {
+export async function scanCable(device: CableDevice, label: string, control: RunControl, onFound: (count: number) => void, baseCount = 0, opts: { skipSent?: boolean } = {}): Promise<ScanResult & { name: string }> {
   const ctl = new AbortController()
   let res: Response
   try {
-    res = await fetch(`${CONNECTOR_URL}/v1/scan?device=${encodeURIComponent(device.id)}`, { cache: 'no-store', signal: ctl.signal })
+    res = await fetch(`${CONNECTOR_URL}/v1/scan?device=${encodeURIComponent(device.id)}${opts.skipSent ? '&sent=0' : ''}`, { cache: 'no-store', signal: ctl.signal })
   } catch {
     throw new Error(CONNECTOR_GONE)
   }

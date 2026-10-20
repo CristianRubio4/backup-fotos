@@ -36,9 +36,9 @@ export const SKIP_DIRS = new Set([
  * Android/obb (datos internos de las apps: miles de imágenes que no son
  * fotos del usuario). Android/media sí se recorre: ahí están las de WhatsApp.
  */
-export function skipDir(name: string, relPath: string) {
+export function skipDir(name: string, relPath: string, skipSent = false) {
   const n = name.toLowerCase()
   if (SKIP_DIRS.has(n) || name.startsWith('.')) return true
-  // WhatsApp/Media/WhatsApp Images/Sent (y Video, GIF…): fotos que tú has enviado; no se copian.
-  return /(^|\/)android\/(data|obb)$/i.test(relPath) || /(^|\/)WhatsApp [^/]+\/Sent$/i.test(relPath)
+  // WhatsApp/Media/WhatsApp Images/Sent (y Video, GIF…): fotos que tú has enviado (se pueden excluir en Ajustes).
+  return /(^|\/)android\/(data|obb)$/i.test(relPath) || (skipSent && /(^|\/)WhatsApp [^/]+\/Sent$/i.test(relPath))
 }

@@ -89,6 +89,12 @@ export function SettingsScreen() {
           </>
         )}
         <Toggle
+          label="Copiar también lo enviado por WhatsApp"
+          hint="Las carpetas Sent de WhatsApp (fotos y vídeos que tú has enviado). Desactívalo para ahorrar espacio y tiempo. Los stickers, audios y documentos de WhatsApp nunca se copian."
+          checked={settings.whatsappSent}
+          onChange={(v) => saveSettings({ ...settings, whatsappSent: v })}
+        />
+        <Toggle
           label="Separar por dispositivo"
           hint={`Añade una carpeta con el nombre del dispositivo (${device.name || 'Móvil de Ana'}).`}
           checked={settings.layout === 'per-device'}

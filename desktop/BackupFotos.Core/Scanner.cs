@@ -12,7 +12,7 @@ public sealed class ScanResult
 /// <summary>Recorre el origen entero, carpeta a carpeta, a cualquier profundidad.</summary>
 public static class Scanner
 {
-    public static ScanResult Scan(IMediaSource source, CancellationToken ct, Action<ScanResult, string>? onDir = null)
+    public static ScanResult Scan(IMediaSource source, CancellationToken ct, Action<ScanResult, string>? onDir = null, bool skipSent = false)
     {
         var result = new ScanResult();
         // Recorrido en profundidad sin recursión (un móvil puede tener carpetas muy anidadas).
@@ -40,7 +40,7 @@ public static class Scanner
             {
                 if (e.IsDirectory)
                 {
-                    if (!Media.SkipDir(e.Name, e.Path)) subdirs.Add(e.Path);
+                    if (!Media.SkipDir(e.Name, e.Path, skipSent)) subdirs.Add(e.Path);
                     continue;
                 }
                 files++;
