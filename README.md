@@ -7,56 +7,144 @@ Aplicación web (PWA) para hacer copias de seguridad de fotos y vídeos en un di
 **App web:** https://cristianrubio4.github.io/backup-fotos/
 **Programa para Windows (móvil por cable):** [descargar BackupFotos.exe](https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe)
 
-## Cómo hacer el backup de tu móvil
+## Guía paso a paso
 
-Cada backup crea en el destino **una sola carpeta** con el nombre del móvil y la fecha y hora (`Galaxy S23 - 2026-10-19 14h30`) y guarda dentro **todas** las fotos y vídeos, verificados, **con la misma estructura de carpetas y nombres que en el móvil** (`…/DCIM/Camera/IMG_1234.jpg`, `…/Pictures/Screenshots/captura.png`), junto con los archivos de registro (`.backup-disk-id`, `.backup-manifest.json`). En el móvil no se borra ni se cambia nada.
+### Qué obtienes
 
-- **Rápido:** cada foto se lee una sola vez (directa al disco y verificada); mientras se escribe una, ya se trae la siguiente; las repetidas se detectan al copiar.
-- **Continuar una copia cortada:** si se interrumpe, la app ofrece *Continuar la copia* en la misma carpeta; lo ya copiado se salta sin volver a leerlo.
-- **Solo lo nuevo (opcional, Ajustes):** cada carpeta nueva lleva solo lo que no esté ya en otra copia del disco; lo ya guardado ni se lee.
-- **Al terminar:** galería con filtros (fotos / vídeos), informe en CSV, aviso del sistema y número de archivos pendientes en el icono de la app instalada.
+Cada backup crea en el disco **una sola carpeta** con el nombre del móvil y la fecha y hora, y dentro **todas** sus fotos y vídeos, verificados, con **la misma estructura de carpetas y los mismos nombres que en el móvil**:
 
-> **¿Por qué hace falta BackupFotos.exe con el móvil por cable?** Windows no deja que un navegador recorra un móvil conectado por cable (lo trata como "dispositivo portátil", no como un disco): al elegirlo como carpeta, Windows solo entrega unas pocas fotos recientes. BackupFotos.exe **no se instala**: es un solo archivo que abres con doble clic. Mientras está abierto hace de **conector**: lee el móvil completo (como el Explorador) y se lo pasa a la web, que hace todo lo demás con su interfaz de siempre. Solo responde a esta web y solo desde el propio PC (127.0.0.1). También puede hacer el backup él solo, desde su ventana.
+```
+Galaxy S23 - 2026-10-20 10h15/
+  .backup-ignore/                                  ← registro de la copia (no lo borres)
+  Memoria interna/DCIM/Camera/IMG_20240714_182205.jpg
+  Memoria interna/Pictures/Screenshots/Screenshot_01.png
+  Memoria interna/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/IMG-WA0001.jpg
+```
+
+- Cada archivo se relee del disco y se compara con el original (SHA-256). Una foto a medias nunca aparece con su nombre.
+- En el móvil **no se borra ni se cambia nada**.
+- Las fotos **HEIC** del iPhone se guardan como **JPG** (opción de Ajustes; ver más abajo).
+- Una foto repetida en dos carpetas del móvil se copia en las dos: cada carpeta queda completa.
+
+### Antes de empezar (solo la primera vez)
+
+1. **Disco de destino.** Un disco externo, un pendrive o una carpeta del PC. Para vídeos de más de 4 GB, el disco debe estar en **exFAT** (no FAT32): Explorador → clic derecho en el disco → Formatear → exFAT. *Formatear borra el disco.*
+2. **Abre la app web** en Chrome o Edge: https://cristianrubio4.github.io/backup-fotos/ (opcional: icono de instalar en la barra de direcciones, para tenerla como app).
+3. **Dónde guardar → Añadir** y elige el disco o la carpeta.
+4. Si vas a copiar un móvil **por cable** (o por Enlace móvil), descarga **[BackupFotos.exe](https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe)**: no se instala, es un solo archivo. Si Windows avisa de que es desconocido (no está firmado): **Más información → Ejecutar de todas formas**.
+
+> **¿Por qué BackupFotos.exe?** Windows no deja que un navegador recorra un móvil conectado por cable: al elegirlo como carpeta solo entrega unas pocas fotos recientes. El programa lee el móvil entero (como el Explorador) y se lo pasa a la web, que hace todo lo demás con su interfaz de siempre. Solo responde a esta web y solo desde el propio PC (127.0.0.1). **No hay que pulsar nada en él**: basta con que esté abierto (su recuadro verde dice "Conector para la web activo").
 
 ### Android
 
-**Con un PC con Windows (recomendado)**
+**A. Por cable, con un PC con Windows (lo más rápido)**
 
-1. Descarga [BackupFotos.exe](https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe) (solo la primera vez) y ábrelo con doble clic. No se instala. Si Windows avisa de que es un programa desconocido: **Más información → Ejecutar de todas formas** (no está firmado). Déjalo abierto.
-2. Conecta el móvil por cable y **desbloquéalo**. En el aviso USB del móvil elige **Transferencia de archivos** (en algunos móviles: "Archivos" o "MTP").
-3. En la [app web](https://cristianrubio4.github.io/backup-fotos/) (o la app instalada): **Fotos que copiar → Móvil por cable** → **Añadir** junto a tu móvil. Si el navegador pregunta si la web puede acceder a dispositivos de la red local, pulsa **Permitir** (es el programa, en tu propio PC).
-4. **Dónde guardar → Añadir** (un disco externo o una carpeta del PC) y **Hacer backup**.
-5. Se recorren **todas** las carpetas del móvil, también la tarjeta SD: cámara, capturas, WhatsApp (`Android/media`), Telegram, descargas… Se saltan solo los datos internos de las apps (`Android/data`, `Android/obb`), la papelera y las miniaturas. El resultado es una carpeta `Nombre del móvil - fecha hora`, y en el informe pulsas **Copiados** para ver las fotos.
+1. Abre **BackupFotos.exe** y déjalo abierto.
+2. Conecta el móvil por cable y **desbloquéalo**. En el aviso USB del móvil elige **Transferencia de archivos** (o "Archivos" / "MTP").
+3. En la web: **Fotos que copiar → Móvil por cable** → **Añadir** junto a tu móvil (el que **no** pone "Enlace móvil"). Si el navegador pregunta si la web puede acceder a dispositivos de la red local, pulsa **Permitir** (es el programa, en tu propio PC).
+4. Si tenías añadida antes una carpeta del móvil con **Añadir** (por ejemplo `storage`), **quítala**: es la vía lenta que solo ve unas pocas fotos.
+5. Decide si incluir la carpeta **Sent** de WhatsApp (casilla bajo "Fotos que copiar"; el botón **?** dice qué contiene, cuánto ocupa en ese móvil y cuánto tiempo añade).
+6. Pulsa **Hacer backup**. Mantén el móvil desbloqueado hasta que termine (sube el tiempo de bloqueo de pantalla a 10 min o más).
 
-La próxima vez basta con abrir el programa, conectar el móvil y pulsar **Hacer backup** en la web: el móvil queda recordado.
+La próxima vez: abre el programa, conecta el móvil y pulsa **Hacer backup**. El móvil queda recordado.
 
-**Sin cable, por Enlace móvil (wifi):** si tienes el móvil enlazado con *Enlace móvil* / *Enlace a Windows* (aparece en el Explorador, en "Dispositivos móviles"), el programa también lo muestra como `Nombre · Enlace móvil (wifi)`: añádelo igual en **Móvil por cable**. En el móvil, la app **Enlace a Windows** debe estar activada y con permiso para los archivos (Ajustes de la app → Funciones → Archivos). Es más lento que el cable y depende de la wifi; si Windows avisa de que "no se pueden transferir archivos", usa el cable.
+**B. Sin cable, por Enlace móvil (wifi, más lento)**
 
-Mantén el móvil desbloqueado durante la copia. Si se bloquea o se desconecta, lo ya copiado queda guardado y verificado; vuelve a lanzar el backup.
+1. Ten el móvil enlazado con **Enlace móvil / Enlace a Windows** (aparece en el Explorador, en "Dispositivos móviles"). En el móvil, la app **Enlace a Windows** activada y con permiso para los archivos.
+2. Abre **BackupFotos.exe**.
+3. En la web: **Fotos que copiar → Móvil por cable** → **Añadir** junto a `Nombre · Enlace móvil (wifi)`.
+4. **Hacer backup**. Si Windows avisa de que "no se pueden transferir archivos", usa el cable.
 
-**Solo con el móvil (sin PC)**
+**C. Desde fuera de casa, por internet (Móvil ↔ PC)**
 
-1. Abre la [app web](https://cristianrubio4.github.io/backup-fotos/) en **Chrome** (versión 132 o posterior). Opcional: menú → *Instalar app*.
-2. **Fotos que copiar → Añadir**: elige `DCIM` y, si quieres, `Pictures`, `Android/media/com.whatsapp/WhatsApp/Media`… (Android no deja elegir la raíz de la memoria).
+El PC se queda en casa; el móvil puede estar en cualquier sitio con internet (no hace falta la misma wifi).
+
+En el **PC de casa** (una vez, antes de salir):
+1. Conecta el disco y abre la web → **Móvil ↔ PC** → **Recibir del móvil** (concede el permiso del disco).
+2. Deja **la pestaña abierta** y el PC **sin suspenderse**: Windows → Configuración → Sistema → Energía → *Suspender: nunca* (al menos con el cargador).
+3. La primera vez aparece un **código QR**.
+
+En el **móvil** (Android, con Chrome):
+1. **Emparejar (solo la primera vez):** abre la cámara, apunta al QR del PC y abre el enlace en Chrome. El móvil queda emparejado con ese PC.
+2. **Inicio → Fotos que copiar → Añadir**: elige `DCIM` y, si quieres, `Pictures`, `Android/media/com.whatsapp/WhatsApp/Media`… (Android no deja elegir la raíz de la memoria).
+3. **Móvil ↔ PC → Copiar en [tu PC]**. Verás el porcentaje, la velocidad y el tiempo restante. Mantén la pantalla encendida y la pestaña abierta.
+4. Si se corta, vuelve a pulsar **Copiar**: continúa donde se quedó.
+
+Las fotos van **directas y cifradas** del móvil al PC (WebRTC); el servidor público de PeerJS solo sirve para que los dos aparatos se encuentren. Solo el móvil emparejado (con la clave del QR) puede enviar. Algunas redes móviles no permiten la conexión directa: prueba desde una wifi. Con datos móviles, miles de fotos son muchos GB.
+
+**D. Solo con el móvil (sin PC)**
+
+1. Abre la web en **Chrome** (versión 132 o posterior).
+2. **Fotos que copiar → Añadir**: `DCIM` y las demás carpetas que quieras.
 3. **Dónde guardar → Añadir**: un disco o pendrive conectado por USB-OTG, o una carpeta de la tarjeta SD.
 4. **Hacer backup**.
 
-**Con la web en el PC** (sin programa): **Elegir fotos sueltas** → Este equipo → tu móvil → Almacenamiento interno → DCIM → Camera → Ctrl + A → Abrir. Funciona, pero hay que entrar en cada carpeta.
-
 ### iPhone
 
-**Con un PC con Windows (recomendado)**
+**A. Por cable, con un PC con Windows**
 
-1. Instala **Dispositivos Apple** (Apple Devices, en Microsoft Store) o iTunes: traen el controlador que necesita Windows para ver el iPhone.
-2. En el iPhone: **Ajustes → Fotos → Transferir a Mac o PC → Mantener originales**. Así se copian las fotos tal cual (HEIC y vídeos MOV); con "Automático" el iPhone las convierte a JPG al vuelo.
-3. Si usas iCloud con **Optimizar almacenamiento**, el iPhone solo guarda versiones reducidas: cambia a **Descargar y conservar originales** (Ajustes → [tu nombre] → iCloud → Fotos) y espera a que se descarguen.
-4. Conecta el iPhone por cable, **desbloquéalo** y pulsa **Confiar** en el aviso "¿Confiar en este ordenador?".
-5. Abre [BackupFotos.exe](https://github.com/CristianRubio4/backup-fotos/releases/latest/download/BackupFotos.exe) (no se instala) y déjalo abierto. En la [app web](https://cristianrubio4.github.io/backup-fotos/): **Fotos que copiar → Móvil por cable → Añadir** junto a tu iPhone, elige dónde guardar y pulsa **Hacer backup**. Las Live Photos se copian como foto (HEIC) + vídeo (MOV) con el mismo nombre.
+1. Instala **Dispositivos Apple** (Microsoft Store) o iTunes: traen el controlador para que Windows vea el iPhone.
+2. En el iPhone: **Ajustes → Fotos → Transferir a Mac o PC → Mantener originales**.
+3. Si usas iCloud con **Optimizar almacenamiento**, cambia a **Descargar y conservar originales** (Ajustes → [tu nombre] → iCloud → Fotos) y espera a que se descarguen: si no, solo hay versiones reducidas.
+4. Conecta el iPhone, **desbloquéalo** y pulsa **Confiar**.
+5. Abre **BackupFotos.exe**. En la web: **Fotos que copiar → Móvil por cable → Añadir** junto al iPhone → **Hacer backup**.
+6. Las HEIC se guardan como JPG (si la opción está activada) y las Live Photos como foto + vídeo con el mismo nombre.
 
-**Con un Mac**: importa las fotos con la app **Fotos** o **Captura de Imagen** a una carpeta y haz el backup de esa carpeta con la [app web](https://cristianrubio4.github.io/backup-fotos/) en Chrome o Edge.
+**B. Con un Mac:** importa las fotos con **Fotos** o **Captura de Imagen** a una carpeta y haz el backup de esa carpeta con la web en Chrome o Edge.
 
-**Solo con el iPhone (Safari)**: la app web funciona en **modo compatible**: eliges las fotos, la app las analiza y prepara archivos ZIP que guardas en un disco o en Archivos. Safari no entrega el vídeo de las Live Photos ni deja guardar directamente en un disco, así que es la opción más limitada.
+**C. Solo con el iPhone (Safari):** modo compatible: eliges las fotos y la app prepara archivos ZIP que guardas en un disco o en Archivos. Es la opción más limitada (Safari no entrega el vídeo de las Live Photos). *Móvil ↔ PC no está disponible en iPhone.*
 
+### Durante la copia
+
+- La pantalla de progreso muestra el porcentaje, la velocidad, el tiempo restante y **qué está haciendo cada archivo en marcha** (se copian 4 a la vez): *leyendo del origen*, *convirtiendo a JPG*, *escribiendo en el disco*, *verificando*.
+- **"● Trabajando"** = está activa. **"Última actividad: hace X s"** = lleva ese tiempo sin moverse (en naranja a partir de 30 s). Un vídeo grande puede tardar en empezar: el programa lo lee entero del móvil antes de enviarlo.
+- Si pasa **minuto y medio** sin actividad, aparece un aviso rojo: mira la línea **"Ahora"** de la ventana de BackupFotos.exe (si no cambia, el móvil ha dejado de responder: desbloquéalo o reconecta el cable).
+- Si la copia va lenta, la web avisa y dice por qué (por ejemplo, si estás copiando por Enlace móvil en vez de por cable). En el programa, la línea "Ahora" muestra la **velocidad real de lectura del móvil** y los ms por archivo.
+- Puedes **pausar** y **cancelar**. Lo copiado queda guardado y verificado.
+
+### Al terminar
+
+1. Lee el **informe**: copiados, repetidos, errores (lo que no se pudo copiar sigue en el móvil) y en cuántas carpetas se ha buscado.
+2. Pulsa **Copiados** para ver la galería (filtros Todo / Fotos / Vídeos; toca una para verla a pantalla completa).
+3. Opcional: **Descargar el informe (CSV)**, una fila por archivo.
+4. Abre algunas fotos de la carpeta en el disco para comprobar que se ven bien.
+
+### Si se corta (o lo cancelas)
+
+En **Inicio** aparece **Continuar la copia**: sigue en la **misma carpeta** y salta al instante lo ya copiado, sin volver a leerlo del móvil. Si una foto quedó escrita entera justo al cortar, se comprueba y se da por buena.
+
+### Copias siguientes
+
+- **Por defecto**, cada backup es **completo e independiente** (una carpeta nueva con todas las fotos).
+- Con **Ajustes → "Solo lo nuevo en cada copia"**, cada carpeta nueva lleva solo lo que no esté ya en otra copia del disco; lo ya guardado ni se lee. Las copias siguientes tardan muy poco.
+- Para sustituir una copia antigua: haz la nueva, compruébala y **solo entonces** borra la carpeta antigua.
+
+### Opciones (Ajustes → Estructura en el disco)
+
+| Opción | Qué hace |
+|---|---|
+| Una carpeta completa por cada copia / Un solo backup por fecha | Carpeta "móvil - fecha hora" por backup (por defecto), o un único backup que crece en carpetas año/mes. |
+| Misma estructura de carpetas que en el móvil | Reproduce DCIM/Camera, Pictures/Screenshots… con los nombres originales (por defecto). |
+| Solo lo nuevo en cada copia | Salta lo que ya está en otra copia del disco. |
+| Guardar las fotos HEIC (iPhone) como JPG | JPG a resolución completa y calidad alta, con fecha, cámara y ubicación; cada JPG se comprueba (se abre, mide lo mismo y se ve igual). Si alguna no se puede convertir bien, se guarda en HEIC. Solo queda el JPG. |
+| Copiar también lo enviado por WhatsApp | Carpetas Sent (también como casilla en Inicio, con el botón **?**). Los stickers, audios, notas de voz, documentos y fondos de WhatsApp no se copian. |
+| Separar por dispositivo | Añade una subcarpeta con el nombre del dispositivo. |
+
+### Ver fotos HEIC en Windows
+
+Si alguna se guardó en HEIC: instala gratis en Microsoft Store las **Extensiones de imagen HEIF** y las **Extensiones de vídeo HEVC del fabricante del dispositivo** (`ms-windows-store://pdp/?ProductId=9n4wgh0z6vhq`, la versión gratuita), o usa un visor gratuito como **ImageGlass** o **XnView MP**. En la web (Explorar y Copiados) se ven siempre.
+
+### Problemas frecuentes
+
+| Qué pasa | Por qué | Qué hacer |
+|---|---|---|
+| Solo copia unas pocas fotos (p. ej. 6 de WhatsApp) | Se eligió el móvil como carpeta (`storage`, de Enlace a Windows): Windows solo entrega unas pocas | Quita ese origen y usa **Móvil por cable** con BackupFotos.exe |
+| "Enlace a Windows está desactivado" / "No se pueden transferir archivos" | Aviso de Windows al leer por Enlace a Windows | Usa el cable con BackupFotos.exe, o activa Enlace a Windows en el móvil |
+| Va muy lento (KB/s) | Copiando por wifi (Enlace móvil), cable de carga, puerto USB 2 | Cable original, puerto USB 3 (azul), el móvil "por cable" (sin "Enlace móvil") |
+| "Ya se llamó a la función de apagado…" | Corte momentáneo con el móvil (pantalla bloqueada, mal contacto) | El programa reconecta y reintenta solo; mantén el móvil desbloqueado |
+| El móvil no aparece en "Móvil por cable" | El móvil no está en modo transferencia o el programa no está abierto | Desbloquéalo, elige "Transferencia de archivos" y abre BackupFotos.exe |
+| Móvil ↔ PC: "el PC no responde" | La web del PC no está en "Recibir del móvil", el PC se ha suspendido o no tiene internet | Activa "Recibir del móvil" en el PC y desactiva la suspensión |
+| Las HEIC no se abren | Windows no trae el lector de HEIC | Activa "Guardar las fotos HEIC como JPG" o instala las extensiones (arriba) |
 ## Funciones
 
 | | |
