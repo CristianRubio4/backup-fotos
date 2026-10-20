@@ -1,4 +1,4 @@
-import { CircleHelp, Compass, HardDriveDownload, History, Home, Settings, ShieldCheck, Wrench, X, type LucideIcon } from 'lucide-react'
+import { CircleHelp, Compass, Globe, HardDriveDownload, History, Home, Settings, ShieldCheck, Wrench, X, type LucideIcon } from 'lucide-react'
 import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import { DiskBadge } from '../components/DiskBadge'
 import { ThemeSwitch } from '../components/ThemeSwitch'
@@ -18,6 +18,7 @@ const HistoryScreen = lazy(() => import('../screens/History').then((m) => ({ def
 const SettingsScreen = lazy(() => import('../screens/Settings').then((m) => ({ default: m.SettingsScreen })))
 const HelpScreen = lazy(() => import('../screens/Help').then((m) => ({ default: m.HelpScreen })))
 const CompatScreen = lazy(() => import('../screens/Compat').then((m) => ({ default: m.CompatScreen })))
+const RemoteScreen = lazy(() => import('../screens/Remote').then((m) => ({ default: m.RemoteScreen })))
 
 interface NavItem {
   id: Screen
@@ -30,6 +31,7 @@ const NAV: NavItem[] = [
   { id: 'home', label: 'Inicio', icon: Home },
   { id: 'explore', label: 'Explorar', icon: Compass, full: true },
   { id: 'tools', label: 'Herramientas', icon: Wrench, full: true },
+  { id: 'remote', label: 'Móvil ↔ PC', icon: Globe, full: true },
   { id: 'history', label: 'Historial', icon: History },
   { id: 'settings', label: 'Ajustes', icon: Settings },
   { id: 'help', label: 'Ayuda', icon: CircleHelp },
@@ -128,6 +130,11 @@ export function App() {
     void init()
   }, [init])
 
+  // Abierta desde el QR o el enlace de emparejamiento del PC: a "Móvil ↔ PC", que guarda el emparejamiento.
+  useEffect(() => {
+    if (ready && location.hash.includes('emparejar=')) go('remote')
+  }, [ready, go])
+
   // Precarga el resto de pantallas cuando el navegador está libre: la navegación es instantánea.
   useEffect(() => {
     if (!ready) return
@@ -152,6 +159,7 @@ export function App() {
   else if (screen === 'tools') content = <ToolsScreen />
   else if (screen === 'history') content = <HistoryScreen />
   else if (screen === 'settings') content = <SettingsScreen />
+  else if (screen === 'remote') content = <RemoteScreen />
   else content = <HelpScreen />
 
   return (

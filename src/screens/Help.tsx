@@ -169,6 +169,19 @@ export function HelpScreen() {
         <p>Si un archivo no se puede leer (por ejemplo, porque el móvil lo estaba moviendo en ese momento), se anota en el informe y el backup sigue con el resto.</p>
       </Section>
 
+      <Section title="Copiar desde fuera de casa (Móvil ↔ PC)">
+        <p>
+          Con el PC de casa encendido y esta web abierta en <b>Móvil ↔ PC → Recibir del móvil</b>, el móvil (Android, con Chrome) puede copiar
+          sus fotos en él desde cualquier sitio con internet, sin estar en la misma wifi. La primera vez se empareja escaneando con la cámara
+          del móvil el código QR que muestra el PC.
+        </p>
+        <p>
+          Las fotos van directas del móvil al PC, cifradas de extremo a extremo (WebRTC). Para que los dos aparatos se encuentren se usa el
+          servidor público de PeerJS, que solo intercambia sus direcciones. Solo el móvil emparejado puede enviar. Algunas redes móviles no
+          permiten la conexión directa: en ese caso, prueba desde una wifi. Si se corta, vuelve a pulsar Copiar: continúa donde se quedó.
+        </p>
+      </Section>
+
       <Section title="Dónde guardar el backup">
         <p>
           El destino puede ser <b>cualquier carpeta</b>: un disco externo, un pendrive, una tarjeta SD o una carpeta de este mismo ordenador o

@@ -1,0 +1,48 @@
+name: Tests de ramas (sin desplegar)
+
+# En cualquier rama que no sea main: tests y compilación de la web y del programa,
+# sin publicar nada (ni la web ni el programa). Se publica al unir con main.
+
+on:
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Tests
+        run: dotnet test desktop/BackupFotos.Tests/BackupFotos.Tests.csproj -c Release --logger "trx;LogFileName=resultados.trx" --results-directory test-results
+      - name: Publicar los tests fallidos
+        if: failure()
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem test-results -Filter *.trx -Recurse) {
+            [xml]$x = Get-Content $f.FullName
+            foreach ($r in $x.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Failed' }) {
+              $msg = ($r.Output.ErrorInfo.Message + ' | ' + $r.Output.ErrorInfo.StackTrace) -replace "`r?`n", ' ' -replace '%', '%25'
+              if ($msg.Length -gt 1500) { $msg = $msg.Substring(0, 1500) }
+              Write-Output "::error title=Test fallido: $($r.testName)::$msg"
+            }
+          }
+      - name: Compilar (sin publicar)
+        run: dotnet publish desktop/BackupFotos.App/BackupFotos.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out

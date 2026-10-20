@@ -121,6 +121,13 @@ async function set(key: string, value: unknown) {
   await (await dbp).put('kv', value, key)
 }
 
+/** Emparejamiento móvil ↔ PC (ver platform/remote). */
+export interface Pairing {
+  pcId: string
+  secret: string
+  pcName: string
+}
+
 export interface SentStats {
   count: number
   bytes: number
@@ -160,6 +167,24 @@ export const db = {
 
   async setLastSpeed(bytesPerSec: number) {
     await set('lastSpeed', bytesPerSec)
+  },
+
+  /** PC de casa: su dirección y clave para recibir del móvil (se crean la primera vez). */
+  async getRemotePairing(): Promise<Pairing | null> {
+    return (await get<Pairing>('remotePairing')) ?? null
+  },
+
+  async setRemotePairing(p: Pairing) {
+    await set('remotePairing', p)
+  },
+
+  /** Móvil: el PC de casa con el que está emparejado. */
+  async getRemoteTarget(): Promise<Pairing | null> {
+    return (await get<Pairing>('remoteTarget')) ?? null
+  },
+
+  async setRemoteTarget(p: Pairing | null) {
+    await set('remoteTarget', p)
   },
 
   /** Copia que se quedó a medias (para "Continuar la copia"). */

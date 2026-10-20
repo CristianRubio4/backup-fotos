@@ -25,7 +25,7 @@ import { diskTarget, isLocked } from './keys'
 /** Por qué está esperando un backup interrumpido por el disco. */
 export type WaitReason = 'disconnected' | 'needs-permission' | 'other-disk'
 
-export type Screen = 'home' | 'progress' | 'report' | 'explore' | 'tools' | 'history' | 'settings' | 'help'
+export type Screen = 'home' | 'progress' | 'report' | 'explore' | 'tools' | 'history' | 'settings' | 'help' | 'remote'
 
 export interface SourceView extends SourceRecord {
   perm: PermissionState
@@ -551,7 +551,36 @@ export async function saveDiskIndex(disk: DiskRecord) {
  * el usuario quiere conservar) sin pasar por los filtros, y fusiona el
  * resultado con el informe actual.
  */
-async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: SourceFile[], cable: CableDevice[] = [], resumeFolder?: string) {
+/** Fotos que llegan de un móvil por internet (ver state/remote): se copian como un origen más. */
+export interface RemoteSource {
+  name: string
+  files: SourceFile[]
+  dirs: string[]
+}
+
+/**
+ * Copia en el PC de casa lo que envía un móvil por internet. No hay nadie delante del PC:
+ * el disco tiene que estar conectado y con permiso (se concedió al activar "Recibir del móvil").
+ * Si la última copia de ese móvil se quedó a medias, se continúa en su carpeta.
+ */
+export async function startRemote(remote: RemoteSource): Promise<BackupReport | null> {
+  const s = useApp.getState()
+  if (s.running) throw new Error('El PC está haciendo otra copia ahora mismo.')
+  const disk = activeDisk()
+  if (!disk || s.diskStates[disk.key]?.state !== 'connected') throw new Error('El disco de backup del PC no está conectado.')
+  if ((await disk.handle.queryPermission({ mode: 'readwrite' })) !== 'granted') throw new Error('El PC ha perdido el permiso del disco: vuelve a activar "Recibir del móvil" en el PC.')
+  if (disk.encrypted && isLocked(disk)) throw new Error('El disco del PC está cifrado y bloqueado.')
+  const pending = s.pendingRun
+  const resume = pending && pending.diskKey === disk.key && pending.folder.startsWith(`${remote.name} - `) ? pending.folder : undefined
+  let result: BackupReport | null = null
+  await withBackupLock(async () => {
+    await runJob(disk, [], undefined, [], resume, remote)
+    result = useApp.getState().report
+  })
+  return result
+}
+
+async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: SourceFile[], cable: CableDevice[] = [], resumeFolder?: string, remote?: RemoteSource) {
   let disk = initialDisk
   const { settings, device, report: previous } = useApp.getState()
   const ctl = new Controller()
@@ -576,8 +605,9 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
   const snapshot = settings.runFolder && !disk.encrypted
   /** Con un único móvil por cable como origen, la carpeta de la copia lleva su nombre (el que da Windows). */
   let cableName: string | null = null
-  const onlyCable = cable.length === 1 && sources.length === 0 && useApp.getState().pickedFiles.length === 0
-  const originCount = cable.length + sources.length + (useApp.getState().pickedFiles.length ? 1 : 0)
+  const onlyCable = !remote && cable.length === 1 && sources.length === 0 && useApp.getState().pickedFiles.length === 0
+  const originCount = remote ? 1 : cable.length + sources.length + (useApp.getState().pickedFiles.length ? 1 : 0)
+  if (remote) cableName = remote.name
   // "Solo lo nuevo": índice de lo que ya hay en las copias del disco (solo se leen sus registros, no las fotos).
   const known = snapshot && settings.onlyNew && !force ? await knownOnDisk(disk) : null
   let badge = -1
@@ -597,12 +627,19 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
       // Una carpeta por copia (copia completa): cada foto se lee una sola vez, directa al disco y verificada,
       // sin pasadas previas de huellas ni de análisis. Con el móvil por cable es lo que marca la diferencia.
       readOnce: snapshot,
-      slowSource: cable.length > 0,
+      slowSource: cable.length > 0 || !!remote,
       diskName: disk.name,
       encrypted: !!disk.encrypted,
       scan: force
         ? async () => ({ files: force, ignored: [] })
-        : async (onFound) => {
+        : remote
+          ? async (onFound) => {
+              // Lo que envía el móvil por internet (ya recorrido allí).
+              lastScan = new Map(remote.files.map((f) => [f.relPath, f]))
+              onFound(remote.files.length)
+              return { files: remote.files, ignored: [], dirs: remote.dirs }
+            }
+          : async (onFound) => {
             const files: SourceFile[] = []
             const ignored: string[] = []
             const unreadable: Array<{ relPath: string; reason: string }> = []
