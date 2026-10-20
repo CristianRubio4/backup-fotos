@@ -6,7 +6,8 @@ import { createEncryption, unlock, type DiskKeys, type EncryptionParams } from '
 import { decryptCopy, encryptCopy } from '../core/crypto-io'
 import { hashStream } from '../core/hash'
 import { CancelledError, type ExifInfo, type ProgressFn, type RunControl } from '../core/types'
-import { decodeHeif, decodeWithBrowser, heicThumbnail } from './image-analysis'
+import { decodeHeif, decodeWithBrowser, heicThumbnail, heicToJpeg } from './image-analysis'
+import type { ExifData } from '../core/exif-writer'
 
 // Worker de E/S: hashes, copia en streaming y lectura de EXIF, fuera del hilo
 // de la interfaz. La pausa y la cancelación llegan por mensajes y se
@@ -157,6 +158,31 @@ const api = {
 
   heicThumbnail(file: Blob, size: number) {
     return heicThumbnail(file, size)
+  },
+
+  /** HEIC → JPG comprobado, con la fecha, la cámara y la ubicación de la original (null si no se puede). */
+  async heicToJpeg(file: Blob) {
+    let exif: ExifData | null = null
+    try {
+      const d = await exifr.parse(file, { tiff: true, exif: true, gps: true, xmp: false, icc: false, iptc: false, jfif: false, ihdr: false })
+      if (d) {
+        const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
+        const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+        const date = (v: unknown) => (v instanceof Date && !Number.isNaN(v.getTime()) ? v : null)
+        const alt = num(d.GPSAltitude)
+        exif = {
+          make: str(d.Make),
+          model: str(d.Model),
+          taken: date(d.DateTimeOriginal) ?? date(d.CreateDate),
+          latitude: num(d.latitude),
+          longitude: num(d.longitude),
+          altitude: alt === undefined ? undefined : d.GPSAltitudeRef === 1 ? -alt : alt,
+        }
+      }
+    } catch {
+      // Sin datos legibles: el JPG se crea igual, sin ellos.
+    }
+    return heicToJpeg(file, exif)
   },
 
   /**

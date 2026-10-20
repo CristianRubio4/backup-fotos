@@ -591,6 +591,8 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
       // Misma estructura de carpetas que en el móvil; con un solo origen, sin repetir su nombre.
       mirror: snapshot && settings.keepStructure ? { stripFirst: originCount === 1 } : undefined,
       knownElsewhere: known ? (h) => known.get(h) : undefined,
+      // HEIC → JPG comprobado (en un disco cifrado no: allí se guarda todo tal cual).
+      convertHeic: settings.heicToJpg && !disk.encrypted ? (b) => io.heicToJpeg(b) : undefined,
       sourceName: () => cableName,
       // Una carpeta por copia (copia completa): cada foto se lee una sola vez, directa al disco y verificada,
       // sin pasadas previas de huellas ni de análisis. Con el móvil por cable es lo que marca la diferencia.

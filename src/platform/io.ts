@@ -61,6 +61,7 @@ export const io = {
   readExif: (file: Blob) => run((r) => r.readExif(file)),
   inspect: (file: Blob, opts: Parameters<IoApi['inspect']>[1]) => run((r) => r.inspect(file, opts)),
   heicThumbnail: (file: Blob, size: number) => run((r) => r.heicThumbnail(file, size)),
+  heicToJpeg: (file: Blob) => run((r) => r.heicToJpeg(file)),
   copyEncrypted: (file: Blob, h: FileSystemFileHandle, keys: DiskKeys, onProgress: ProgressFn) => run((r) => r.copyEncrypted(file, h, keys, p(onProgress))),
   hashEncrypted: (h: FileSystemFileHandle, keys: DiskKeys, onProgress: ProgressFn) => run((r) => r.hashEncrypted(h, keys, p(onProgress))),
   decryptTo: (src: FileSystemFileHandle, dest: FileSystemFileHandle, keys: DiskKeys, onProgress: ProgressFn) => run((r) => r.decryptTo(src, dest, keys, p(onProgress))),

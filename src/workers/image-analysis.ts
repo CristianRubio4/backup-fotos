@@ -1,6 +1,7 @@
 // Decodificación y medidas de imágenes dentro del Worker.
 import type { Features } from '../core/analysis/classify'
 import { laplacianVariance, pixelStats, toGray } from '../core/analysis/pixels'
+import { buildExifApp1, insertApp1, type ExifData } from '../core/exif-writer'
 
 type Decode = NonNullable<Features['decode']>
 
@@ -81,6 +82,72 @@ export async function heicThumbnail(file: Blob, size: number): Promise<Blob | nu
     const thumb = new OffscreenCanvas(Math.round(width * k), Math.round(height * k))
     thumb.getContext('2d')!.drawImage(full, 0, 0, thumb.width, thumb.height)
     return await thumb.convertToBlob({ type: 'image/jpeg', quality: 0.8 })
+  } catch {
+    return null
+  } finally {
+    images.forEach((i) => i.free?.())
+  }
+}
+
+/** Diferencia media (0-255) entre dos imágenes reducidas a 32×32: detecta un JPG negro, vacío o roto. */
+function meanDiff(a: CanvasImageSource, b: CanvasImageSource) {
+  const S = 32
+  const read = (src: CanvasImageSource) => {
+    const c = new OffscreenCanvas(S, S)
+    const ctx = c.getContext('2d', { willReadFrequently: true })!
+    ctx.drawImage(src, 0, 0, S, S)
+    return ctx.getImageData(0, 0, S, S).data
+  }
+  const x = read(a)
+  const y = read(b)
+  let sum = 0
+  for (let i = 0; i < x.length; i += 4) sum += Math.abs(x[i] - y[i]) + Math.abs(x[i + 1] - y[i + 1]) + Math.abs(x[i + 2] - y[i + 2])
+  return sum / ((x.length / 4) * 3)
+}
+
+/**
+ * HEIC → JPG a resolución completa y calidad alta (0,92), con la fecha, la cámara y la
+ * ubicación de la original. Se comprueba antes de darlo por bueno: el JPG se vuelve a
+ * abrir, mide lo mismo que la original y se parece a ella píxel a píxel (no está negro
+ * ni roto). Si algo falla, devuelve null y la foto se guarda tal cual, en HEIC.
+ */
+export async function heicToJpeg(file: Blob, exif: ExifData | null): Promise<Blob | null> {
+  let lib: LibHeif
+  try {
+    lib = await loadHeif()
+  } catch {
+    heif = null
+    return null
+  }
+  let images: ReturnType<InstanceType<LibHeif['HeifDecoder']>['decode']> = []
+  try {
+    images = new lib.HeifDecoder().decode(new Uint8Array(await file.arrayBuffer()))
+    // La imagen principal (la mayor): algunas HEIC llevan además miniaturas o profundidad.
+    const img = images.reduce((best, i) => (i.get_width() * i.get_height() > best.get_width() * best.get_height() ? i : best), images[0])
+    if (!img) return null
+    const width = img.get_width()
+    const height = img.get_height()
+    if (!width || !height) return null
+    const data = new ImageData(width, height)
+    await new Promise<void>((resolve, reject) => img.display(data, (r) => (r ? resolve() : reject(new Error('no se pudo decodificar')))))
+    const canvas = new OffscreenCanvas(width, height)
+    canvas.getContext('2d')!.putImageData(data, 0, 0)
+    const encoded = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 })
+
+    // Fecha, cámara y ubicación de la original.
+    const app1 = exif ? buildExifApp1(exif) : null
+    const bytes = app1 ? insertApp1(new Uint8Array(await encoded.arrayBuffer()), app1) : new Uint8Array(await encoded.arrayBuffer())
+    const jpeg = new Blob([bytes], { type: 'image/jpeg' })
+
+    // Comprobación: el JPG final se abre, mide lo mismo y se parece a la original.
+    const check = await createImageBitmap(jpeg)
+    try {
+      if (check.width !== width || check.height !== height) return null
+      if (meanDiff(canvas, check) > 12) return null
+    } finally {
+      check.close()
+    }
+    return jpeg
   } catch {
     return null
   } finally {

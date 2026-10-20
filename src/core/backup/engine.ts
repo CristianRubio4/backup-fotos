@@ -138,6 +138,11 @@ export interface EngineInput {
    * ("Pictures/Screenshots/captura.png"). `stripFirst`: quitar el nombre del origen de la ruta.
    */
   mirror?: { stripFirst: boolean }
+  /**
+   * HEIC → JPG: devuelve el JPG ya comprobado (o null si no se puede, y entonces se guarda
+   * la HEIC tal cual). En el disco queda solo el JPG.
+   */
+  convertHeic?: (heic: Blob) => Promise<Blob | null>
   /** Archivos que se hashean/analizan a la vez (uno por Worker). La copia siempre es de uno en uno. */
   concurrency?: number
   now?: () => Date
@@ -167,6 +172,13 @@ function swapExt(path: string, fromName: string) {
   const dot = path.lastIndexOf('.')
   const ext = fromName.slice(fromName.lastIndexOf('.'))
   return (dot > path.lastIndexOf('/') ? path.slice(0, dot) : path) + ext
+}
+
+const HEIC_RE = /\.(heic|heif)$/i
+
+/** IMG_1234.HEIC → IMG_1234.jpg (también en rutas). */
+export function heicAsJpg(path: string) {
+  return path.replace(HEIC_RE, '.jpg')
 }
 
 interface Analysis {
@@ -424,10 +436,12 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       // Rutas de esta copia ya registradas (al continuar una copia): búsqueda directa, sin recorrer la lista cada vez.
       const registered = new Map(manifest.entries().map((e) => [e.diskPath.toLowerCase(), e]))
       for (const hf of list) {
-        const at = mirrorPath(hf.file.relPath, input.mirror!.stripFirst)
+        const converts = !!input.convertHeic && HEIC_RE.test(hf.file.name)
+        const at = mirrorPath(converts ? heicAsJpg(hf.file.relPath) : hf.file.relPath, input.mirror!.stripFirst)
         const there = registered.get(at.toLowerCase())
         // Ya está en su sitio en esta copia: misma huella o, si no se conoce, misma ruta y mismo tamaño. No se lee nada.
-        const here = there && (hf.hash !== null ? there.hash === hf.hash : there.size === hf.file.size) ? there : undefined
+        // Una HEIC convertida: basta con que su JPG esté registrado en su ruta.
+        const here = there && (converts || (hf.hash !== null ? there.hash === hf.hash : there.size === hf.file.size)) ? there : undefined
         const elsewhere = !here && hf.hash !== null ? input.knownElsewhere?.(hf.hash) : undefined
         if (here) out.onDisk.push({ file: hf.file, existing: { ...here, diskPath: at } })
         else if (elsewhere) out.onDisk.push({ file: hf.file, existing: elsewhere })
@@ -632,7 +646,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     /** Copia (y verifica) un archivo. */
     const copyOne = async (hf: HashedFile) => {
       await control.checkpoint()
-      const f = hf.file
+      const source = hf.file
+      let f = source
       const a = analysis.get(f)!
       progress.currentFile = f.relPath
       progress.phase = 'copy'
@@ -643,8 +658,19 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
         return
       }
       try {
-        const blob = await f.getFile()
-        const known = { hash: hf.hash }
+        let blob = await f.getFile()
+        let known = { hash: hf.hash }
+        let converted = false
+        // HEIC → JPG comprobado (si no se puede, se guarda la HEIC tal cual: nunca se pierde una foto).
+        if (input.convertHeic && HEIC_RE.test(f.name)) {
+          const jpeg = await input.convertHeic(blob).catch(() => null)
+          if (jpeg) {
+            blob = jpeg
+            converted = true
+            f = { ...source, name: heicAsJpg(source.name), relPath: heicAsJpg(source.relPath), size: jpeg.size }
+            known = { hash: null }
+          }
+        }
         const { path, state, photoPlace } = await withDisk(() => choosePath(f, a, blob, known))
 
         const exifDate = a.exif.date ? toLocalIso(a.exif.date) : null
@@ -670,7 +696,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
             : undefined
           if (twin) {
             await withDisk(() => target.remove(path))
-            await input.hashCache?.set(f, result.hash)
+            if (!converted) await input.hashCache?.set(f, result.hash)
             const own = manifest.hasDiskPath(twin.diskPath)
             const dup = item(f, { diskPath: twin.diskPath, reason: own ? 'Repetida en la selección: ya se ha copiado una igual' : 'Ya está en una copia anterior' })
             if (!own) fromRoot.add(dup)
@@ -688,8 +714,10 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
             status = a.verdict.status
             note = a.verdict.note
           }
+          if (converted) note = `Convertida de HEIC a JPG (original: ${source.name})${note ? ` · ${note}` : ''}`
           register(f, { hash: result.hash, diskPath: path, exifDate, status, note, ...extra })
-          await input.hashCache?.set(f, result.hash)
+          // La caché guarda la huella del archivo de ORIGEN: la de un JPG convertido no vale para la HEIC.
+          if (!converted) await input.hashCache?.set(f, result.hash)
           known.hash = result.hash
           report.copied.push(item(f, { diskPath: path }))
           report.bytesCopied += f.size
@@ -702,7 +730,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
           }
         }
         if (a.motionPhoto) report.motionPhotos++
-        placed.set(f, { diskPath: path, hash: known.hash! })
+        placed.set(source, { diskPath: path, hash: known.hash! })
         // La foto de la pareja apunta también a su vídeo.
         if (photoPlace) manifest.annotate(photoPlace.hash, { pair: known.hash! })
         await withDisk(saveIfDue)
