@@ -184,7 +184,8 @@ describe('una carpeta por copia', () => {
     // Continuar en la misma carpeta: solo se leen las que faltaban.
     const second = await run(t, phone(6), { ...snap(t, new Date(2026, 9, 19, 13, 0)), readOnce: true, slowSource: true, hashCache, runFolderName: first.folder })
     expect(second.folder).toBe(first.folder)
-    expect(second.copied).toHaveLength(6 - done)
+    // Con 4 archivos a la vez, alguna pudo quedar escrita entera justo al cortar: se comprueba que es idéntica y se da por buena.
+    expect(second.copied.length + second.alreadyOnDisk.length).toBe(6 - done)
     expect(second.duplicates).toHaveLength(done)
     expect(reads).toHaveLength(6 - done)
     expect(t.mediaPaths().filter((p) => p.startsWith(first.folder!))).toHaveLength(6)
