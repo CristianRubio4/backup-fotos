@@ -21,7 +21,7 @@ import {
   type RemoteProgress,
 } from '../platform/remote'
 import { walkSource } from '../platform/walk'
-import { activeDisk, startRemote, useApp, type SourceView } from './app'
+import { activeDisk, refreshDisks, startRemote, useApp, type SourceView } from './app'
 
 type ReceiverState = 'off' | 'starting' | 'on' | 'error'
 type SenderState = 'idle' | 'connecting' | 'scanning' | 'sending' | 'done' | 'error'
@@ -72,8 +72,16 @@ export const useRemote = create<RemoteStore>((set, get) => ({
 
   async startReceiver() {
     if (get().receiver === 'on' || get().receiver === 'starting') return
-    const disk = activeDisk()
-    if (!disk) return set({ receiver: 'error', receiverError: 'Primero elige dónde guardar (Inicio → Dónde guardar) y conecta el disco.' })
+    // Recién abierta la app, aún no se ha comprobado el disco: se comprueba ahora.
+    let disk = activeDisk()
+    if (!disk) {
+      await refreshDisks()
+      disk = activeDisk()
+    }
+    // Elegido pero sin acceso todavía (p. ej. tras recargar): se usa igualmente y se pide el permiso.
+    const { disks, activeDiskKey } = useApp.getState()
+    disk ??= disks.find((d) => d.key === activeDiskKey) ?? disks[0] ?? null
+    if (!disk) return set({ receiver: 'error', receiverError: 'En este PC aún no hay ningún sitio donde guardar: Inicio → Dónde guardar → Añadir (el disco o la carpeta del backup).' })
     // El permiso del disco se pide ahora (con el clic): cuando llegue el móvil no habrá nadie delante del PC.
     if ((await ensurePermission(disk.handle, 'readwrite', true)) !== 'granted') return set({ receiver: 'error', receiverError: 'Sin permiso de acceso al disco no se puede recibir.' })
     set({ receiver: 'starting', receiverError: null })

@@ -1,6 +1,6 @@
 import qrcode from 'qrcode-generator'
 import { Copy, Globe, House, Loader2, Smartphone } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, PageHeader, ProgressBar, StatusDot } from '../components/ui'
 import { formatBytes, formatDuration, plural } from '../core/format'
 import { useApp } from '../state/app'
@@ -168,23 +168,22 @@ function Sender() {
 
 export function RemoteScreen() {
   const loadTarget = useRemote((s) => s.loadTarget)
+  // Cada aparato ve solo su parte: el móvil envía, el PC recibe (la otra, por si acaso, a un clic).
+  const [other, setOther] = useState(false)
   useEffect(() => {
     void loadTarget()
   }, [loadTarget])
   return (
     <>
-      <PageHeader title="Móvil ↔ PC" subtitle="Copia las fotos del móvil en el PC de casa desde cualquier sitio, por internet" />
-      {isPhone ? (
-        <>
-          <Sender />
-          <Receiver />
-        </>
-      ) : (
-        <>
-          <Receiver />
-          <Sender />
-        </>
-      )}
+      <PageHeader
+        title="Móvil ↔ PC"
+        subtitle={isPhone ? 'Copia las fotos de este móvil en tu PC de casa desde cualquier sitio' : 'Recibe en este PC las fotos del móvil, esté donde esté'}
+      />
+      {isPhone ? <Sender /> : <Receiver />}
+      <button type="button" className="text-left text-xs text-muted underline" onClick={() => setOther(!other)}>
+        {isPhone ? '¿Estás en el PC de casa? Ver la parte de recibir' : '¿Estás en el móvil? Ver la parte de enviar'}
+      </button>
+      {other && (isPhone ? <Receiver /> : <Sender />)}
     </>
   )
 }
