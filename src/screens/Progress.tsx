@@ -2,11 +2,16 @@ import { AlertOctagon, Ban, Check, Copy, Files, Pause, Play, ShieldQuestion, Squ
 import { Alert, Button, Card, PageHeader, ProgressRing, Stat } from '../components/ui'
 import { PHASES } from '../core/backup/progress'
 import { formatBytes, formatDuration } from '../core/format'
+import { useState } from 'react'
 import { activeDisk, useApp } from '../state/app'
 
 export function ProgressScreen() {
-  const { progress: p, paused, running, pause, resume, cancel, waitReason, batteryPaused, battery, wake, grantDisk } = useApp()
+  const { progress: p, paused, running, pause, resume, cancel, waitReason, batteryPaused, battery, wake, grantDisk, cableDevices } = useApp()
   const disk = activeDisk()
+  const [since] = useState(() => Date.now())
+  // Diagnóstico de lentitud: copiando a menos de 1,5 MB/s durante más de un minuto.
+  const viaWifi = cableDevices.filter((c) => /Enlace móvil/i.test(c.name))
+  const slow = !!p && !paused && !p.waitingDisk && (p.phase === 'copy' || p.phase === 'verify') && p.bytesPerSec > 0 && p.bytesPerSec < 1.5e6 && Date.now() - since > 60_000
   const diskName = disk?.name ?? 'el disco'
 
   if (!running) return <p className="text-muted">No hay ningún backup en curso.</p>
@@ -36,6 +41,37 @@ export function ProgressScreen() {
           )}
         </Alert>
       )}
+      {slow && (
+        <Alert tone="warn">
+          {viaWifi.length > 0 ? (
+            <>
+              <p className="font-medium">Va lento porque estás copiando por Enlace móvil (wifi): {viaWifi.map((c) => c.name).join(', ')}.</p>
+              <p className="mt-1">
+                Por wifi, Enlace a Windows trae cada foto a unos cientos de KB/s: con miles de fotos son muchas horas. Por cable es decenas de veces
+                más rápido:
+              </p>
+              <ol className="mt-1 list-decimal pl-5">
+                <li>Pulsa <b>Cancelar</b> (lo copiado queda guardado).</li>
+                <li>Conecta el móvil por cable, desbloquéalo y elige <b>Transferencia de archivos</b> en el aviso USB del móvil.</li>
+                <li>En <b>Fotos que copiar</b>, quita el que pone "Enlace móvil (wifi)" y, en <b>Móvil por cable</b>, añade el que aparece <b>sin</b> esa etiqueta.</li>
+                <li>Pulsa <b>Continuar la copia</b>: lo ya copiado se salta al instante.</li>
+              </ol>
+              <p className="mt-1 text-muted">Si en Móvil por cable solo aparece el de "Enlace móvil", Windows no ve el móvil por el cable: prueba otro cable (algunos solo cargan) u otro puerto USB.</p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium">Va más lento de lo normal ({formatBytes(p!.bytesPerSec)}/s). Por cable suele ir a 10–40 MB/s.</p>
+              <ul className="mt-1 list-disc pl-5">
+                <li>Mira en la ventana de BackupFotos.exe la línea "Ahora": dice a qué velocidad lee del móvil. Si es baja, el cuello de botella es el cable o el puerto.</li>
+                <li>Usa un puerto USB 3 (suele ser azul) y el cable original: muchos cables solo cargan o van a velocidad USB 2.</li>
+                <li>Mantén el móvil desbloqueado y no lo uses durante la copia.</li>
+                <li>Si el disco de destino es un disco externo antiguo (USB 2), también limita la velocidad.</li>
+              </ul>
+            </>
+          )}
+        </Alert>
+      )}
+
       {batteryPaused && (
         <Alert tone="warn">
           <p className="font-medium">Pausado: la batería ha bajado del 10 % ({battery ? Math.round(battery.level * 100) : '?'} %).</p>

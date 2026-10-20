@@ -45,6 +45,16 @@ public sealed class ConnectorServer : IDisposable
     readonly FileCache _cache;
     readonly CancellationTokenSource _stop = new();
     readonly string _version;
+    long _readBytes;
+    TimeSpan _readTime;
+    int _readFiles;
+
+    static string Speed(long bytes, TimeSpan t)
+    {
+        var bps = t.TotalSeconds > 0 ? bytes / t.TotalSeconds : 0;
+        return bps >= 1 << 20 ? $"{bps / (1 << 20):0.0} MB/s" : $"{bps / 1024:0} KB/s";
+    }
+
     /// <summary>Archivos del último escaneo de cada móvil (para no volver a listar la carpeta en cada lectura).</summary>
     readonly Dictionary<string, Dictionary<string, SourceEntry>> _entries = new(StringComparer.Ordinal);
 
@@ -207,7 +217,7 @@ public sealed class ConnectorServer : IDisposable
         var cached = _cache.Get(deviceId, path);
         if (cached is null)
         {
-            Activity?.Invoke($"Copiando {path}");
+
             _hub.With(deviceId, source =>
             {
                 SourceEntry? entry = null;
@@ -224,7 +234,14 @@ public sealed class ConnectorServer : IDisposable
                 {
                     try
                     {
+                        var clock = System.Diagnostics.Stopwatch.StartNew();
                         cached = _cache.Put(deviceId, path, s => source.CopyTo(entry, s, _stop.Token));
+                        // Velocidad real de lectura del móvil (para saber si el cuello de botella es el cable o la wifi).
+                        _readBytes += entry.Size;
+                        _readTime += clock.Elapsed;
+                        _readFiles++;
+                        var via = deviceId.StartsWith("enlace:", StringComparison.Ordinal) ? "por wifi (Enlace móvil)" : "por cable";
+                        Activity?.Invoke($"Copiando {path}\nLeyendo del móvil {via}: {Speed(_readBytes, _readTime)} de media, {_readTime.TotalMilliseconds / Math.Max(1, _readFiles):0} ms por archivo ({_readFiles:N0} archivos)");
                         break;
                     }
                     catch (Exception ex) when (attempt < 3 && ex is not OperationCanceledException and not FileNotFoundException)
