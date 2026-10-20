@@ -1,14 +1,22 @@
 import { AlertOctagon, Ban, Check, Copy, Files, Pause, Play, ShieldQuestion, Square, Sun, Unplug } from 'lucide-react'
 import { Alert, Button, Card, PageHeader, ProgressRing, Stat } from '../components/ui'
-import { PHASES } from '../core/backup/progress'
+import { PHASES, STEP_LABEL } from '../core/backup/progress'
 import { formatBytes, formatDuration } from '../core/format'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { activeDisk, useApp } from '../state/app'
 
 export function ProgressScreen() {
   const { progress: p, paused, running, pause, resume, cancel, waitReason, batteryPaused, battery, wake, grantDisk, cableDevices } = useApp()
   const disk = activeDisk()
   const [since] = useState(() => Date.now())
+  // Reloj de la pantalla: "última actividad hace N s" se actualiza aunque no lleguen datos nuevos.
+  const [clock, setClock] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setClock(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const idleSec = p?.lastActivity ? Math.max(0, Math.round((clock - p.lastActivity) / 1000)) : 0
+  const stuck = !!p && !paused && !p.waitingDisk && p.phase !== 'save' && idleSec >= 90
   // Diagnóstico de lentitud: copiando a menos de 1,5 MB/s durante más de un minuto.
   const viaWifi = cableDevices.filter((c) => /Enlace móvil/i.test(c.name))
   const slow = !!p && !paused && !p.waitingDisk && (p.phase === 'copy' || p.phase === 'verify') && p.bytesPerSec > 0 && p.bytesPerSec < 1.5e6 && Date.now() - since > 60_000
@@ -41,6 +49,20 @@ export function ProgressScreen() {
           )}
         </Alert>
       )}
+      {stuck && (
+        <Alert tone="error">
+          <p className="font-medium">No hay actividad desde hace {formatDuration(idleSec)}: parece atascado.</p>
+          <ul className="mt-1 list-disc pl-5">
+            <li>Mira la ventana de BackupFotos.exe: si la línea "Ahora" no cambia, el móvil ha dejado de responder. Desbloquéalo; si sigue igual, desconecta y vuelve a conectar el cable.</li>
+            <li>Un vídeo muy grande puede tardar en empezar: el programa lo lee entero del móvil antes de enviarlo.</li>
+            <li>
+              Si en un par de minutos no avanza, pulsa <b>Cancelar</b>: lo copiado queda guardado y luego <b>Continuar la copia</b> sigue donde se quedó, sin
+              repetir nada.
+            </li>
+          </ul>
+        </Alert>
+      )}
+
       {slow && (
         <Alert tone="warn">
           {viaWifi.length > 0 ? (
@@ -93,7 +115,26 @@ export function ProgressScreen() {
               <div className="text-sm text-muted">
                 {p?.phase === 'scan' ? `${p.phaseDone} archivos encontrados` : p && p.phaseTotal > 0 ? `${Math.min(p.phaseDone + 1, p.phaseTotal)} de ${p.phaseTotal} archivos` : ''}
               </div>
-              {p?.currentFile && <div className="mt-1 truncate font-mono text-xs text-subtle" title={p.currentFile}>{p.currentFile}</div>}
+              {p?.active && p.active.length > 0 ? (
+                <ul className="mt-2 space-y-1">
+                  {p.active.map((a) => (
+                    <li key={a.path} className="flex items-center gap-2 text-xs">
+                      <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden />
+                      <span className="shrink-0 text-muted">{STEP_LABEL[a.step]}</span>
+                      <span className="min-w-0 truncate font-mono text-subtle" title={a.path}>
+                        {a.path.split('/').slice(-2).join('/')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                p?.currentFile && <div className="mt-1 truncate font-mono text-xs text-subtle" title={p.currentFile}>{p.currentFile}</div>
+              )}
+              {p && !paused && (
+                <div className={`mt-2 text-xs ${idleSec >= 30 ? 'text-warn' : 'text-muted'}`}>
+                  {idleSec < 3 ? '● Trabajando' : `Última actividad: hace ${formatDuration(idleSec)}`}
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
               <span><span className="text-muted">Velocidad </span><b className="tabular-nums">{p ? `${formatBytes(p.bytesPerSec)}/s` : '—'}</b></span>

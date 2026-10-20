@@ -25,7 +25,7 @@ import {
   type SourceFile,
   type Target,
 } from '../types'
-import { SpeedMeter, type Counters, type Phase, type Progress } from './progress'
+import { SpeedMeter, type Counters, type Phase, type Progress, type Step } from './progress'
 
 export interface ReportItem {
   name: string
@@ -241,6 +241,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     const t = Date.now()
     if (!force && t - lastEmit < EMIT_INTERVAL_MS) return
     lastEmit = t
+    progress.lastActivity = t
     // Un reintento tras una desconexión vuelve a contar bytes ya contados.
     progress.totalBytes = Math.max(progress.totalBytes, progress.doneBytes)
     meter.sample(t, progress.doneBytes)
@@ -257,7 +258,17 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
   }
   const onBytes = (n: number) => {
     progress.doneBytes += n
+    progress.lastActivity = Date.now()
     emit()
+  }
+  /** Qué está haciendo cada archivo en marcha (para que se vea que el backup sigue vivo). */
+  const working = new Map<string, Step>()
+  const step = (path: string, s: Step | null) => {
+    if (s) working.set(path, s)
+    else working.delete(path)
+    progress.active = [...working].map(([p, st]) => ({ path: p, step: st }))
+    progress.lastActivity = Date.now()
+    emit(true)
   }
   /** Trabajo no previsto (reintentos, comprobar un archivo existente): se suma al total. */
   const extraBytes = (n: number) => {
@@ -658,11 +669,13 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
         return
       }
       try {
+        step(source.relPath, 'read')
         let blob = await f.getFile()
         let known = { hash: hf.hash }
         let converted = false
         // HEIC → JPG comprobado (si no se puede, se guarda la HEIC tal cual: nunca se pierde una foto).
         if (input.convertHeic && HEIC_RE.test(f.name)) {
+          step(source.relPath, 'convert')
           const jpeg = await input.convertHeic(blob).catch(() => null)
           if (jpeg) {
             blob = jpeg
@@ -686,7 +699,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
           report.alreadyOnDisk.push(item(f, { diskPath: path }))
           counters.copied++
         } else {
-          const result = await withDisk(() => copyAndVerify(f, blob, path, known.hash))
+          step(source.relPath, 'write')
+          const result = await withDisk(() => copyAndVerify(f, blob, path, known.hash, (s) => step(source.relPath, s)))
           // Copia rápida: una foto ya guardada se detecta al copiarla (la huella sale de la propia copia) y se quita.
           // Con la estructura del origen, una foto repetida en OTRA carpeta del móvil sí se queda: cada carpeta completa.
           const twin = input.readOnce
@@ -748,6 +762,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
           report.errors.push(item(f, { reason: errorMessage(err) }))
           counters.errors++
         }
+      } finally {
+        step(source.relPath, null)
       }
       progress.phaseDone++
       emit()
@@ -774,7 +790,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       }),
     )
     if (failed) throw failure
-    async function copyAndVerify(f: SourceFile, blob: Blob, path: string, expected: string | null) {
+    async function copyAndVerify(f: SourceFile, blob: Blob, path: string, expected: string | null, onStep?: (s: Step) => void) {
       let note: string | undefined
       for (let attempt = 1; attempt <= 2; attempt++) {
         if (attempt > 1) extraBytes(f.size * copyFactor)
@@ -786,6 +802,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
         }
         if (settings.verifyHash) {
           progress.phase = 'verify'
+          onStep?.('verify')
           emit(true)
           const back = await target.hash(path, onBytes, control)
           if (back === copied) return { hash: copied, status: (note ? 'unverified' : 'verified') as EntryStatus, note }

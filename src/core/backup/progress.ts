@@ -32,6 +32,19 @@ export interface Progress {
   etaSec: number | null
   /** El disco se ha desconectado y el backup espera a que vuelva. */
   waitingDisk: boolean
+  /** Archivos en marcha ahora mismo (con la copia rápida, varios a la vez) y en qué paso va cada uno. */
+  active?: Array<{ path: string; step: Step }>
+  /** Momento (ms) de la última señal de vida: bytes leídos o escritos, o un paso nuevo. */
+  lastActivity?: number
+}
+
+export type Step = 'read' | 'convert' | 'write' | 'verify'
+
+export const STEP_LABEL: Record<Step, string> = {
+  read: 'leyendo del origen',
+  convert: 'convirtiendo a JPG',
+  write: 'escribiendo en el disco',
+  verify: 'verificando la copia',
 }
 
 /** Velocidad media de los últimos `windowMs` milisegundos. */
