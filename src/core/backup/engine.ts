@@ -417,9 +417,13 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
      */
     const planMirror = (list: HashedFile[]): DedupePlan => {
       const out: DedupePlan = { toCopy: [], onDisk: [], inSelection: [] }
+      // Rutas de esta copia ya registradas (al continuar una copia): búsqueda directa, sin recorrer la lista cada vez.
+      const registered = new Map(manifest.entries().map((e) => [e.diskPath.toLowerCase(), e]))
       for (const hf of list) {
         const at = mirrorPath(hf.file.relPath, input.mirror!.stripFirst)
-        const here = hf.hash !== null && manifest.hashAt(at) === hf.hash ? manifest.findByHash(hf.hash) : undefined
+        const there = registered.get(at.toLowerCase())
+        // Ya está en su sitio en esta copia: misma huella o, si no se conoce, misma ruta y mismo tamaño. No se lee nada.
+        const here = there && (hf.hash !== null ? there.hash === hf.hash : there.size === hf.file.size) ? there : undefined
         const elsewhere = !here && hf.hash !== null ? input.knownElsewhere?.(hf.hash) : undefined
         if (here) out.onDisk.push({ file: hf.file, existing: { ...here, diskPath: at } })
         else if (elsewhere) out.onDisk.push({ file: hf.file, existing: elsewhere })

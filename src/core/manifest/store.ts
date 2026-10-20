@@ -153,6 +153,12 @@ export class ManifestStore {
     return this.byPath.get(path.toLowerCase())
   }
 
+  /** Entrada registrada en esa ruta, si la hay. */
+  entryAt(path: string) {
+    const key = path.toLowerCase()
+    return this.byPath.has(key) ? this.all.find((e) => e.diskPath.toLowerCase() === key) : undefined
+  }
+
   findByHash(hash: string) {
     return this.byHash.get(hash)
   }

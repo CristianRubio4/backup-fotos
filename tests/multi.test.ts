@@ -154,6 +154,13 @@ describe('una carpeta por copia', () => {
     expect(again.copied).toHaveLength(0)
     expect(again.duplicates).toHaveLength(4)
     expect(reads).toHaveLength(0)
+    // Aunque este navegador no recuerde las huellas (otro PC, caché borrada): misma ruta y tamaño → se salta sin leer.
+    cache.clear()
+    const third = await run(t, phone(), { ...snap(t, new Date(2026, 9, 19, 14, 0)), ...opts, runFolderName: r.folder })
+    expect(third.copied).toHaveLength(0)
+    expect(third.duplicates).toHaveLength(4)
+    expect(reads).toHaveLength(0)
+    expect(t.mediaPaths()).toHaveLength(4) // nada copiado otra vez con otro nombre
   })
 
   it('continuar una copia interrumpida: lo ya copiado se salta sin leerlo', async () => {
