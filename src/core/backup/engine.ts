@@ -1,7 +1,7 @@
 import { classify, type DiscardCategory, type Features, type Verdict } from '../analysis/classify'
 import { findLivePhotos } from '../analysis/pairing'
 import { friendlyError } from '../errors'
-import { needsPreHash, planDedupe, type HashedFile } from '../dedupe'
+import { needsPreHash, planDedupe, type DedupePlan, type HashedFile } from '../dedupe'
 import { ensureDiskId } from '../disk'
 import type { EntryStatus, ManifestEntry } from '../manifest/schema'
 import { ManifestStore, type ManifestRecovery } from '../manifest/store'
@@ -148,6 +148,8 @@ const FAT32_REASON =
   'No se ha podido copiar: ocupa más de 4 GB y el disco parece estar formateado en FAT32, que no admite archivos tan grandes. Formatea el disco en exFAT (ver Ayuda)'
 
 const SAVE_INTERVAL_MS = 30_000
+/** Archivos que se copian a la vez en la copia rápida. */
+const COPY_LANES = 4
 const EMIT_INTERVAL_MS = 150
 
 function item(f: SourceFile, extra: Partial<ReportItem> = {}): ReportItem {
@@ -408,12 +410,30 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       }
     }
 
+    /**
+     * Con la estructura del origen, cada archivo va a SU ruta: una foto repetida en otra carpeta
+     * del móvil también se copia allí. Solo se salta lo que ya está en su ruta de esta copia
+     * (continuar una copia) o, con "solo lo nuevo", lo que ya está en otra copia del disco.
+     */
+    const planMirror = (list: HashedFile[]): DedupePlan => {
+      const out: DedupePlan = { toCopy: [], onDisk: [], inSelection: [] }
+      for (const hf of list) {
+        const at = mirrorPath(hf.file.relPath, input.mirror!.stripFirst)
+        const here = hf.hash !== null && manifest.hashAt(at) === hf.hash ? manifest.findByHash(hf.hash) : undefined
+        const elsewhere = !here && hf.hash !== null ? input.knownElsewhere?.(hf.hash) : undefined
+        if (here) out.onDisk.push({ file: hf.file, existing: { ...here, diskPath: at } })
+        else if (elsewhere) out.onDisk.push({ file: hf.file, existing: elsewhere })
+        else out.toCopy.push(hf)
+      }
+      return out
+    }
+
     // ---- Duplicados ----
     setPhase('dedupe', files.length)
     const hashed: HashedFile[] = files
       .filter((f) => !preHashSet.has(f) || hashes.has(f))
       .map((f) => ({ file: f, hash: hashes.get(f) ?? null }))
-    const plan = planDedupe(hashed, (h) => manifest.findByHash(h) ?? input.knownElsewhere?.(h))
+    const plan = input.mirror ? planMirror(hashed) : planDedupe(hashed, (h) => manifest.findByHash(h) ?? input.knownElsewhere?.(h))
     /** Dónde está (o quedará) cada foto en el disco, para colocar su vídeo de Live Photo al lado. */
     const placed = new Map<SourceFile, { diskPath: string; hash: string }>()
     for (const d of plan.onDisk) {
@@ -505,13 +525,18 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     let sinceSave = 0
     let lastSave = Date.now()
 
-    const saveIfDue = async () => {
-      if (sinceSave >= settings.saveEvery || Date.now() - lastSave > SAVE_INTERVAL_MS) {
-        await manifest.flushJournal()
-        sinceSave = 0
-        lastSave = Date.now()
-      }
-    }
+    // Con varios archivos a la vez, los guardados del registro van de uno en uno.
+    let saving: Promise<void> = Promise.resolve()
+    const saveIfDue = () =>
+      (saving = saving
+        .catch(() => {})
+        .then(async () => {
+          if (sinceSave >= settings.saveEvery || Date.now() - lastSave > SAVE_INTERVAL_MS) {
+            sinceSave = 0
+            lastSave = Date.now()
+            await manifest.flushJournal()
+          }
+        }))
 
     type Fixed = 'originalName' | 'sourcePath' | 'size' | 'fileDate' | 'deviceId' | 'deviceName' | 'copiedAt'
     const register = (f: SourceFile, entry: Omit<ManifestEntry, Fixed>) => {
@@ -535,6 +560,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
      */
     const tryPath = async (candidate: string, f: SourceFile, blob: Blob, known: { hash: string | null }) => {
       if (reserved.has(candidate.toLowerCase()) || manifest.hasDiskPath(candidate)) return 'taken'
+      // Se aparta ya: con varios archivos a la vez, dos no pueden acabar en la misma ruta.
+      reserved.add(candidate.toLowerCase())
       const st = await target.stat(candidate)
       if (st === null || st.size === 0) return 'free'
       if (st.size !== f.size) return 'taken'
@@ -594,19 +621,8 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     /** Tras un error de escritura en un archivo > 4 GB, el disco es casi seguro FAT32: no se reintentan los demás. */
     let fat32Suspected = false
 
-    // Copia rápida: mientras se escribe un archivo en el disco, ya se va leyendo el siguiente del origen.
-    const prefetch = (i: number) => {
-      const next = input.readOnce ? toCopy[i] : undefined
-      if (!next) return null
-      const p = next.file.getFile()
-      p.catch(() => {}) // si falla, el error se da al usarlo
-      return p
-    }
-    let ahead = prefetch(0)
-    for (let i = 0; i < toCopy.length; i++) {
-      const hf = toCopy[i]
-      const current = ahead
-      ahead = prefetch(i + 1)
+    /** Copia (y verifica) un archivo. */
+    const copyOne = async (hf: HashedFile) => {
       await control.checkpoint()
       const f = hf.file
       const a = analysis.get(f)!
@@ -616,10 +632,10 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
         report.fat32.push(item(f, { reason: FAT32_REASON }))
         counters.errors++
         progress.phaseDone++
-        continue
+        return
       }
       try {
-        const blob = await (current ?? f.getFile())
+        const blob = await f.getFile()
         const known = { hash: hf.hash }
         const { path, state, photoPlace } = await withDisk(() => choosePath(f, a, blob, known))
 
@@ -637,8 +653,13 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
           counters.copied++
         } else {
           const result = await withDisk(() => copyAndVerify(f, blob, path, known.hash))
-          // Copia rápida: una foto repetida se detecta al copiarla (la huella sale de la propia copia) y se quita.
-          const twin = input.readOnce ? (manifest.findByHash(result.hash) ?? input.knownElsewhere?.(result.hash)) : undefined
+          // Copia rápida: una foto ya guardada se detecta al copiarla (la huella sale de la propia copia) y se quita.
+          // Con la estructura del origen, una foto repetida en OTRA carpeta del móvil sí se queda: cada carpeta completa.
+          const twin = input.readOnce
+            ? input.mirror
+              ? input.knownElsewhere?.(result.hash)
+              : (manifest.findByHash(result.hash) ?? input.knownElsewhere?.(result.hash))
+            : undefined
           if (twin) {
             await withDisk(() => target.remove(path))
             await input.hashCache?.set(f, result.hash)
@@ -650,7 +671,7 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
             if (own) placed.set(f, { diskPath: twin.diskPath, hash: twin.hash })
             progress.phaseDone++
             emit()
-            continue
+            return
           }
           // El estado final combina la verificación de la copia y el análisis del contenido.
           let status: EntryStatus = result.status
@@ -696,6 +717,27 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       emit()
     }
 
+    // Copia rápida: varios archivos a la vez. Mientras uno se escribe y se verifica en el disco,
+    // los siguientes ya se están leyendo del origen (con el móvil por cable, el programa no para nunca).
+    // Si no, de uno en uno y en orden (la foto de una Live Photo antes que su vídeo).
+    const lanes = input.readOnce ? COPY_LANES : 1
+    let next = 0
+    let failed = false
+    let failure: unknown
+    await Promise.all(
+      Array.from({ length: Math.min(lanes, toCopy.length) }, async () => {
+        while (!failed && next < toCopy.length) {
+          try {
+            await copyOne(toCopy[next++])
+          } catch (err) {
+            // El primer fallo grave (cancelar, disco desconectado o lleno) para todo; los demás carriles terminan lo suyo.
+            if (!failed) failure = err
+            failed = true
+          }
+        }
+      }),
+    )
+    if (failed) throw failure
     async function copyAndVerify(f: SourceFile, blob: Blob, path: string, expected: string | null) {
       let note: string | undefined
       for (let attempt = 1; attempt <= 2; attempt++) {

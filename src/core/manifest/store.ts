@@ -60,6 +60,10 @@ function assertWritten(text: string | null, expected: Manifest) {
 
 export class ManifestStore {
   private byHash = new Map<string, ManifestEntry>()
+  /** Todas las entradas, incluidas las de mismo contenido en otra ruta (con la estructura del origen, cada archivo en su carpeta). */
+  private all: ManifestEntry[] = []
+  /** Ruta en el disco (sin distinguir mayúsculas) → huella. */
+  private byPath = new Map<string, string>()
   private diskPaths = new Set<string>()
   private sizes = new Set<number>()
   private pending: ManifestEntry[] = []
@@ -139,8 +143,14 @@ export class ManifestStore {
     return this.pending.length
   }
 
+  /** Todas las entradas (una por archivo del disco). */
   entries() {
-    return [...this.byHash.values()]
+    return [...this.all]
+  }
+
+  /** Huella del archivo registrado en esa ruta, si lo hay. */
+  hashAt(path: string) {
+    return this.byPath.get(path.toLowerCase())
   }
 
   findByHash(hash: string) {
@@ -155,8 +165,12 @@ export class ManifestStore {
     return this.diskPaths.has(path.toLowerCase())
   }
 
+  /**
+   * Registra un archivo copiado. Mismo contenido en otra ruta: se registra también
+   * (copias con la misma estructura que el origen). Misma ruta ya registrada: no se repite.
+   */
   add(entry: ManifestEntry) {
-    if (this.byHash.has(entry.hash)) return
+    if (this.diskPaths.has(entry.diskPath.toLowerCase())) return
     this.index(entry)
     this.pending.push(entry)
   }
@@ -172,21 +186,31 @@ export class ManifestStore {
 
   /** Quita una entrada (p. ej. un archivo liberado del origen que ya no existe en el disco). */
   remove(hash: string) {
-    const e = this.byHash.get(hash)
-    if (!e) return
+    if (!this.byHash.has(hash)) return
     this.byHash.delete(hash)
-    this.diskPaths.delete(e.diskPath.toLowerCase())
+    for (const e of this.all.filter((x) => x.hash === hash)) {
+      this.diskPaths.delete(e.diskPath.toLowerCase())
+      this.byPath.delete(e.diskPath.toLowerCase())
+    }
+    this.all = this.all.filter((x) => x.hash !== hash)
     this.pending = this.pending.filter((p) => p.hash !== hash)
   }
 
   /** Guarda las entradas nuevas en un segmento del diario (rápido, para poder reanudar). */
   async flushJournal() {
     if (this.pending.length === 0) return
-    const seg: JournalSegment = { version: 1, seq: this.nextSeq++, entries: this.pending }
-    const path = journalPath(seg.seq)
-    await this.target.writeText(path, JSON.stringify(seg))
-    this.journalFiles.push(path)
+    // Lo que se registre mientras se escribe va al siguiente segmento.
+    const entries = this.pending
     this.pending = []
+    const seg: JournalSegment = { version: 1, seq: this.nextSeq++, entries }
+    const path = journalPath(seg.seq)
+    try {
+      await this.target.writeText(path, JSON.stringify(seg))
+    } catch (err) {
+      this.pending = [...entries, ...this.pending]
+      throw err
+    }
+    this.journalFiles.push(path)
   }
 
   /** Escribe el manifest completo de forma segura y elimina el diario ya incorporado. */
@@ -200,10 +224,13 @@ export class ManifestStore {
   }
 
   private index(e: ManifestEntry) {
-    if (this.byHash.has(e.hash)) return
-    this.byHash.set(e.hash, e)
     // Comparación sin distinguir mayúsculas: Windows, macOS y exFAT no las distinguen.
-    this.diskPaths.add(e.diskPath.toLowerCase())
+    const key = e.diskPath.toLowerCase()
+    if (this.diskPaths.has(key)) return
+    if (!this.byHash.has(e.hash)) this.byHash.set(e.hash, e)
+    this.all.push(e)
+    this.byPath.set(key, e.hash)
+    this.diskPaths.add(key)
     this.sizes.add(e.size)
   }
 }

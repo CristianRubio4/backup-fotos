@@ -164,9 +164,9 @@ public class BackupTests
         Assert.Equal(Outcome.Completed, r.Outcome);
         var media = Directory.EnumerateFiles(set, "*", SearchOption.AllDirectories).Count(f => Media.IsMedia(Path.GetFileName(f)));
         var empty = Directory.EnumerateFiles(set, "*", SearchOption.AllDirectories).Count(f => Media.IsMedia(Path.GetFileName(f)) && new FileInfo(f).Length == 0);
-        // Todo lo que es foto o vídeo, salvo los vacíos; los repetidos (misma foto con otro nombre) una vez.
-        Assert.Equal(media - empty, r.Copied + r.Duplicates.Count);
-        Assert.Single(r.Duplicates); // "copia de IMG_0001.jpg" e IMG_0001.jpg son la misma foto
+        // Todo lo que es foto o vídeo, salvo los vacíos (también las repetidas, cada una en su sitio).
+        Assert.Equal(media - empty, r.Copied);
+        Assert.Empty(r.Duplicates);
         Assert.Equal(empty, r.EmptyFiles.Count);
         Assert.Equal(r.Copied, MediaFiles(r.Folder!).Count);
         // Misma estructura de carpetas y nombres que en el origen.
@@ -174,13 +174,15 @@ public class BackupTests
     }
 
     [Fact]
-    public void Las_fotos_repetidas_dentro_del_movil_se_copian_una_vez()
+    public void Una_foto_repetida_en_otra_carpeta_se_copia_tambien_alli()
     {
         using var dest = new TempDir();
         var p = new FakePhone().Add("DCIM/IMG_1.jpg", "misma foto").Add("WhatsApp/IMG-WA1.jpg", "misma foto").Add("DCIM/IMG_2.jpg", "otra");
         var r = Run(p, dest.Path);
-        Assert.Equal(2, r.Copied);
-        Assert.Single(r.Duplicates);
+        Assert.Equal(3, r.Copied);
+        Assert.Empty(r.Duplicates);
+        Assert.Equal(new[] { "DCIM/IMG_1.jpg", "DCIM/IMG_2.jpg", "WhatsApp/IMG-WA1.jpg" }, MediaFiles(r.Folder!));
+        Assert.Equal(3, ControlFiles.Load(r.Folder!)!.Entries.Count);
     }
 
     [Fact]

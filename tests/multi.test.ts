@@ -125,6 +125,37 @@ describe('una carpeta por copia', () => {
     expect(r.copied.map((c) => c.diskPath)).toContain('Galaxy S23 - 2026-10-19 12h00/Interno/Pictures/Screenshots/Screenshot_1.png')
   })
 
+  it('con la estructura del móvil, una foto repetida en otra carpeta se copia también allí (y al continuar no se relee)', async () => {
+    const t = new MemoryTarget()
+    const cache = new Map<string, string>()
+    const hashCache: HashCache = { get: async (f) => cache.get(f.relPath), set: async (f, h) => void cache.set(f.relPath, h) }
+    const reads: string[] = []
+    const phone = () =>
+      [
+        src('Móvil/carp1/foto 1.jpg', 'foto de pepe', MAY),
+        src('Móvil/carp1/foto 2.jpg', 'otra de pepe', MAY),
+        src('Móvil/carp2/foto 1.jpg', 'foto de pepe', MAY), // la misma que carp1/foto 1
+        src('Móvil/carp2/foto 3.jpg', 'una nueva', MAY),
+      ].map((f) => ({ ...f, getFile: () => (reads.push(f.relPath), f.getFile()) }))
+    const opts = { readOnce: true, slowSource: true, hashCache, sourceName: () => 'Móvil', mirror: { stripFirst: true } }
+    const r = await run(t, phone(), { ...snap(t, new Date(2026, 9, 19, 12, 0)), ...opts })
+    expect(r.copied).toHaveLength(4)
+    expect(r.duplicates).toHaveLength(0)
+    expect(t.mediaPaths()).toEqual([
+      'Móvil - 2026-10-19 12h00/carp1/foto 1.jpg',
+      'Móvil - 2026-10-19 12h00/carp1/foto 2.jpg',
+      'Móvil - 2026-10-19 12h00/carp2/foto 1.jpg',
+      'Móvil - 2026-10-19 12h00/carp2/foto 3.jpg',
+    ])
+    expect(parseManifest(await t.readText(`${r.folder}/${MANIFEST_FILE}`))!.entries).toHaveLength(4)
+    // Continuar esa misma copia: ya está todo en su sitio; no se lee nada del móvil.
+    reads.length = 0
+    const again = await run(t, phone(), { ...snap(t, new Date(2026, 9, 19, 13, 0)), ...opts, runFolderName: r.folder })
+    expect(again.copied).toHaveLength(0)
+    expect(again.duplicates).toHaveLength(4)
+    expect(reads).toHaveLength(0)
+  })
+
   it('continuar una copia interrumpida: lo ya copiado se salta sin leerlo', async () => {
     const t = new MemoryTarget()
     const cache = new Map<string, string>()

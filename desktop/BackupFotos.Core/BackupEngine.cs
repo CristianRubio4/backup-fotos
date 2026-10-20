@@ -262,12 +262,8 @@ public static class BackupEngine
                 if (written != f.Size && f.Size > 0)
                     note = $"El tamaño recibido ({written} bytes) no coincide con el que indica el móvil ({f.Size})";
 
-                // Mismo contenido que otra foto de este backup (p. ej. una foto reenviada por WhatsApp): una sola vez.
-                if (seen.TryGetValue(hash, out var existing))
-                {
-                    File.Delete(part);
-                    return new CopyOutcome(null, existing);
-                }
+                // Una foto repetida en otra carpeta del móvil también se copia allí: cada carpeta queda completa,
+                // con la misma estructura que en el móvil.
 
                 // Misma estructura de carpetas y mismo nombre que en el móvil: DCIM/Camera/IMG_1234.jpg
                 var exif = o.ReadDate(part);
