@@ -82,7 +82,8 @@ public class ConnectorTests
             .Add("Interno/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/IMG-WA1.jpg", "whatsapp")
             .Add("Interno/Android/data/com.app/x.jpg", "interno")
             .Add("Interno/Download/doc.pdf", "pdf")
-            .Add("SD/DCIM/Camera/VID_1.mp4", "vídeo en la tarjeta");
+            .Add("SD/DCIM/Camera/VID_1.mp4", "vídeo en la tarjeta")
+            .Add("Interno/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Sent/IMG-S1.jpg", "enviada");
         var (server, http, cache) = Start(phone);
         using var _ = server; using var __ = http; using var ___ = cache;
 
@@ -94,9 +95,13 @@ public class ConnectorTests
         Assert.Equal(new[]
         {
             "Interno/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/IMG-WA1.jpg",
+            "Interno/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Sent/IMG-S1.jpg",
             "Interno/DCIM/Camera/IMG_1.jpg",
             "SD/DCIM/Camera/VID_1.mp4",
         }, files.Order(StringComparer.Ordinal));
+        // Lo enviado por WhatsApp va marcado: la web decide si lo copia.
+        var sent = lines.Where(l => l.GetProperty("t").GetString() == "file" && l.GetProperty("sent").GetBoolean()).Select(l => l.GetProperty("path").GetString()).ToList();
+        Assert.Equal(new[] { "Interno/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Sent/IMG-S1.jpg" }, sent);
         var done = lines.Last();
         Assert.Equal("done", done.GetProperty("t").GetString());
         Assert.Equal("Pixel 8", done.GetProperty("name").GetString());

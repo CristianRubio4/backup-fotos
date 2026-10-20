@@ -5,8 +5,8 @@ import { statusLabel } from '../components/DiskBadge'
 import { Menu, MenuItem } from '../components/Menu'
 import { Alert, Badge, Button, Card, PageHeader, StatusDot } from '../components/ui'
 import { UnlockDisk } from '../components/UnlockDisk'
-import { daysSince, formatBytes, formatDateTime, plural } from '../core/format'
-import type { DiskRecord } from '../db'
+import { daysSince, formatBytes, formatDateTime, formatDuration, plural } from '../core/format'
+import { db, type DiskRecord, type SentStats } from '../db'
 import { CONNECTOR_DOWNLOAD } from '../platform/connector'
 import { activeDisk, useApp, type SourceView } from '../state/app'
 import { isLocked, useKeys } from '../state/keys'
@@ -160,6 +160,70 @@ function useConnectorPolling(active: boolean, ms: number) {
       clearInterval(id)
     }
   }, [active, ms, refreshConnector])
+}
+
+/** ¿Copiar también lo enviado por WhatsApp? Con lo que ocupa en cada móvil y el tiempo de más estimado. */
+function SentOption() {
+  const { settings, saveSettings, cableDevices, running } = useApp()
+  const [help, setHelp] = useState(false)
+  const [info, setInfo] = useState<{ stats: Record<string, SentStats>; speed: number | null } | null>(null)
+  useEffect(() => {
+    if (!help) return
+    void Promise.all([db.getSentStats(), db.getLastSpeed()]).then(([stats, speed]) => setInfo({ stats, speed }))
+  }, [help])
+  return (
+    <div className="mt-3 rounded-xl border border-line p-3">
+      <div className="flex items-center gap-2">
+        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-[var(--accent)]"
+            checked={settings.whatsappSent}
+            disabled={running}
+            onChange={(e) => void saveSettings({ ...settings, whatsappSent: e.target.checked })}
+          />
+          ¿Incluir la carpeta <b>Sent</b> de WhatsApp?
+        </label>
+        <button
+          type="button"
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border text-xs font-semibold ${help ? 'border-accent bg-accent-soft text-accent-strong' : 'border-line text-muted hover:bg-surface-2'}`}
+          onClick={() => setHelp(!help)}
+          aria-expanded={help}
+          aria-label="Qué es la carpeta Sent"
+        >
+          ?
+        </button>
+      </div>
+      {help && (
+        <div className="animate-rise mt-2 space-y-1.5 text-xs leading-relaxed text-muted">
+          <p>
+            <b className="text-fg">Sent</b> guarda las fotos y vídeos que <b>tú has enviado</b> por WhatsApp desde ese móvil. Casi siempre son copias
+            (reducidas por WhatsApp) de fotos que ya tienes en la cámara, así que puedes dejarla fuera para ahorrar espacio y tiempo.
+          </p>
+          {cableDevices.length === 0 ? (
+            <p>Lo que ocupa se mide al hacer una copia de un móvil por cable.</p>
+          ) : (
+            <ul className="space-y-0.5">
+              {cableDevices.map((c) => {
+                const s = info?.stats[c.name]
+                const extra = s && info?.speed ? s.bytes / info.speed : null
+                return (
+                  <li key={c.id}>
+                    <b className="text-fg">{c.name}:</b>{' '}
+                    {!info
+                      ? 'calculando…'
+                      : s
+                        ? `${plural(s.count, 'foto o vídeo', 'fotos y vídeos')} · ${formatBytes(s.bytes)}${extra !== null ? ` · unos ${formatDuration(extra)} más de copia` : ' · el tiempo se estimará tras la primera copia'}`
+                        : 'se medirá en la próxima copia (se mide aunque no se incluya)'}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /** Un móvil por cable elegido como origen. */
@@ -439,6 +503,7 @@ export function HomeScreen() {
               </button>
             )}
           </div>
+          {(cableDevices.length > 0 || sources.length > 0) && <SentOption />}
           {showCable && <CablePanel />}
           {showPhone && (
             <div className="animate-rise mt-2 space-y-2 rounded-xl bg-surface-2 p-3 text-xs leading-relaxed">

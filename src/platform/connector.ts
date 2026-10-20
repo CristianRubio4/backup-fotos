@@ -52,11 +52,11 @@ async function readFile(device: string, path: string): Promise<Blob> {
  * Recorre el móvil entero (todas sus carpetas, lo hace el programa) y devuelve
  * sus fotos y vídeos como archivos de origen. `label` es el primer tramo de la ruta.
  */
-export async function scanCable(device: CableDevice, label: string, control: RunControl, onFound: (count: number) => void, baseCount = 0, opts: { skipSent?: boolean } = {}): Promise<ScanResult & { name: string }> {
+export async function scanCable(device: CableDevice, label: string, control: RunControl, onFound: (count: number) => void, baseCount = 0, opts: { skipSent?: boolean } = {}): Promise<ScanResult & { name: string; sent: { count: number; bytes: number } }> {
   const ctl = new AbortController()
   let res: Response
   try {
-    res = await fetch(`${CONNECTOR_URL}/v1/scan?device=${encodeURIComponent(device.id)}${opts.skipSent ? '&sent=0' : ''}`, { cache: 'no-store', signal: ctl.signal })
+    res = await fetch(`${CONNECTOR_URL}/v1/scan?device=${encodeURIComponent(device.id)}`, { cache: 'no-store', signal: ctl.signal })
   } catch {
     throw new Error(CONNECTOR_GONE)
   }
@@ -66,6 +66,8 @@ export async function scanCable(device: CableDevice, label: string, control: Run
   const ignored: string[] = []
   const unreadable: Array<{ relPath: string; reason: string }> = []
   let dirs: string[] = []
+  /** Lo enviado por WhatsApp (carpetas Sent): se mide siempre, se copia solo si se quiere. */
+  const sent = { count: 0, bytes: 0 }
   let name = device.name
   let done = false
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
@@ -85,6 +87,12 @@ export async function scanCable(device: CableDevice, label: string, control: Run
         const path = String(m.path)
         const size = Number(m.size)
         const mtime = Number(m.mtime) || 0
+        const isSent = m.sent === true || /(^|\/)WhatsApp [^/]+\/Sent\//i.test(path)
+        if (isSent) {
+          sent.count++
+          sent.bytes += size
+          if (opts.skipSent) break
+        }
         files.push({
           relPath: rel(path),
           name: String(m.name),
@@ -134,5 +142,5 @@ export async function scanCable(device: CableDevice, label: string, control: Run
   }
   if (!done) throw new Error(CONNECTOR_GONE)
   onFound(baseCount + files.length)
-  return { files, ignored, unreadable, dirs, name }
+  return { files, ignored, unreadable, dirs, name, sent }
 }

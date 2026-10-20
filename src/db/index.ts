@@ -121,6 +121,19 @@ async function set(key: string, value: unknown) {
   await (await dbp).put('kv', value, key)
 }
 
+/** Emparejamiento móvil ↔ PC (ver platform/remote). */
+export interface Pairing {
+  pcId: string
+  secret: string
+  pcName: string
+}
+
+export interface SentStats {
+  count: number
+  bytes: number
+  measuredAt: string
+}
+
 export interface PendingRun {
   diskKey: string
   folder: string
@@ -137,6 +150,41 @@ export const db = {
 
   async setCableDevices(list: Array<{ id: string; name: string }>) {
     await set('cableDevices', list)
+  },
+
+  /** Lo que ocupa la carpeta Sent de WhatsApp en cada móvil (medido en el último escaneo) y la velocidad del último backup. */
+  async getSentStats(): Promise<Record<string, SentStats>> {
+    return (await get<Record<string, SentStats>>('sentStats')) ?? {}
+  },
+
+  async setSentStats(name: string, stats: SentStats) {
+    await set('sentStats', { ...(await db.getSentStats()), [name]: stats })
+  },
+
+  async getLastSpeed(): Promise<number | null> {
+    return (await get<number>('lastSpeed')) ?? null
+  },
+
+  async setLastSpeed(bytesPerSec: number) {
+    await set('lastSpeed', bytesPerSec)
+  },
+
+  /** PC de casa: su dirección y clave para recibir del móvil (se crean la primera vez). */
+  async getRemotePairing(): Promise<Pairing | null> {
+    return (await get<Pairing>('remotePairing')) ?? null
+  },
+
+  async setRemotePairing(p: Pairing) {
+    await set('remotePairing', p)
+  },
+
+  /** Móvil: el PC de casa con el que está emparejado. */
+  async getRemoteTarget(): Promise<Pairing | null> {
+    return (await get<Pairing>('remoteTarget')) ?? null
+  },
+
+  async setRemoteTarget(p: Pairing | null) {
+    await set('remoteTarget', p)
   },
 
   /** Copia que se quedó a medias (para "Continuar la copia"). */

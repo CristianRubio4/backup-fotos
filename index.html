@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!--
-      Privacidad: la app no puede conectarse a ningún servidor (connect-src 'self'), salvo al programa BackupFotos.exe en este mismo PC (127.0.0.1),
+      Privacidad: la app no puede conectarse a ningún servidor (connect-src 'self'), salvo al programa BackupFotos.exe en este mismo PC (127.0.0.1) y, para la copia móvil ↔ PC por internet, al servidor de encuentro de PeerJS (solo intercambia direcciones; las fotos van directas y cifradas entre los dos aparatos),
       ni cargar nada de fuera. Ninguna foto ni dato sale del dispositivo.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; font-src 'self'; connect-src 'self' http://127.0.0.1:47613; object-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; font-src 'self'; connect-src 'self' http://127.0.0.1:47613 https://0.peerjs.com wss://0.peerjs.com; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <meta name="referrer" content="no-referrer" />
     <meta name="color-scheme" content="light dark" />
