@@ -21,7 +21,7 @@ import {
   type RemoteProgress,
 } from '../platform/remote'
 import { walkSource } from '../platform/walk'
-import { activeDisk, startRemote, useApp } from './app'
+import { activeDisk, startRemote, useApp, type SourceView } from './app'
 
 type ReceiverState = 'off' | 'starting' | 'on' | 'error'
 type SenderState = 'idle' | 'connecting' | 'scanning' | 'sending' | 'done' | 'error'
@@ -143,7 +143,7 @@ export const useRemote = create<RemoteStore>((set, get) => ({
     if (!target || get().sender === 'connecting' || get().sender === 'scanning' || get().sender === 'sending') return
     if (app.sources.length === 0) return set({ sender: 'error', senderInfo: 'Añade primero las carpetas del móvil (Inicio → Fotos que copiar → Añadir): DCIM, Pictures, WhatsApp…' })
     // Permisos de las carpetas: con el clic.
-    const sources = []
+    const sources: SourceView[] = []
     for (const s of app.sources) if ((await ensurePermission(s.handle, 'read', true).catch(() => 'denied' as const)) === 'granted') sources.push(s)
     if (!sources.length) return set({ sender: 'error', senderInfo: 'Sin permiso para leer las carpetas de fotos.' })
 
