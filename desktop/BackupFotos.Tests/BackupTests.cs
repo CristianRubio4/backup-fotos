@@ -45,6 +45,8 @@ public class BackupTests
         p.Add("Almacenamiento interno/DCIM/.thumbnails/t1.jpg", "miniatura");
         p.Add("Almacenamiento interno/Pictures/.trashed-123-IMG.jpg", "en la papelera");
         p.Add("Almacenamiento interno/Download/factura.pdf", "no es foto");
+        p.Add("Almacenamiento interno/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Stickers/st1.webp", "sticker");
+        p.Add("Almacenamiento interno/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents/escaneo.jpg", "documento");
         p.Add("Almacenamiento interno/Download/Viaje a Roma 2024.06/roma.jpeg", "carpeta con puntos");
         p.Add("Tarjeta SD/DCIM/Camera/IMG_SD.jpg", "foto en la tarjeta");
         return p;
@@ -55,7 +57,7 @@ public class BackupTests
     {
         var scan = Scanner.Scan(TypicalPhone(), default);
         Assert.Equal(30 + 5 + 8 + 1 + 6 + 1 + 1, scan.Files.Count); // sin WhatsApp Images/Sent
-        Assert.DoesNotContain(scan.Files, f => f.Path.Contains("/Sent/"));
+        Assert.DoesNotContain(scan.Files, f => f.Path.Contains("/Sent/") || f.Path.Contains("Stickers") || f.Path.Contains("Documents"));
         Assert.Contains(scan.Files, f => f.Path == "Tarjeta SD/DCIM/Camera/IMG_SD.jpg");
         Assert.Contains(scan.Files, f => f.Path == "Almacenamiento interno/Download/Viaje a Roma 2024.06/roma.jpeg");
         Assert.DoesNotContain(scan.Files, f => f.Path.Contains("/Android/data/") || f.Path.Contains("/Android/obb/") || f.Path.Contains("/.thumbnails/"));

@@ -26,6 +26,8 @@ export function isVideo(name: string) {
 /** Carpetas del sistema que nunca contienen fotos del usuario. */
 export const SKIP_DIRS = new Set([
   '$recycle.bin', 'system volume information', '.trashes', '.spotlight-v100', '.fseventsd', '.thumbnails', '.trash', 'lost.dir',
+  // WhatsApp: solo fotos y vídeos de las conversaciones (ni stickers, ni audios, ni documentos).
+  'whatsapp stickers', 'whatsapp backup excluded stickers', 'whatsapp audio', 'whatsapp voice notes', 'whatsapp documents', 'whatsapp wallpaper', 'whatsapp databases',
 ])
 
 /**

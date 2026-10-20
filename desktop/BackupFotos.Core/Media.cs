@@ -22,6 +22,7 @@ public static partial class Media
         // Carpetas de un móvil que nunca tienen fotos ni vídeos del usuario: no se recorren (por cable, cada carpeta cuesta).
         "Music", "Ringtones", "Notifications", "Alarms", "Podcasts", "Audiobooks", "Recordings",
         "WhatsApp Voice Notes", "WhatsApp Audio", "WhatsApp Databases", "WhatsApp Backup Excluded Stickers",
+        "WhatsApp Stickers", "WhatsApp Documents", "WhatsApp Wallpaper", "WallPaper",
     };
 
     public static string Ext(string name)
