@@ -96,7 +96,7 @@ function writeIfd(buf: Uint8Array, offset: number, entries: Entry[]) {
 }
 
 /** Segmento APP1 "Exif" completo (con su marcador), o null si no hay nada que guardar. */
-export function buildExifApp1(x: ExifData): Uint8Array | null {
+export function buildExifApp1(x: ExifData): Uint8Array<ArrayBuffer> | null {
   const ifd0: Entry[] = []
   const exif: Entry[] = []
   const gps: Entry[] = []
@@ -155,7 +155,7 @@ export function buildExifApp1(x: ExifData): Uint8Array | null {
 }
 
 /** Inserta el APP1 justo después del inicio del JPEG (SOI), como pide el estándar EXIF. */
-export function insertApp1(jpeg: Uint8Array, app1: Uint8Array): Uint8Array {
+export function insertApp1(jpeg: Uint8Array, app1: Uint8Array): Uint8Array<ArrayBuffer> {
   if (jpeg[0] !== 0xff || jpeg[1] !== 0xd8) throw new Error('No es un JPEG')
   const out = new Uint8Array(jpeg.length + app1.length)
   out.set(jpeg.subarray(0, 2))
