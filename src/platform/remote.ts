@@ -32,6 +32,14 @@ export interface RemoteFile {
   mtime: number
 }
 
+/** Un destino del PC (disco o carpeta de "Dónde guardar"), para elegirlo desde el móvil. */
+export interface PcDisk {
+  key: string
+  name: string
+  /** Conectado y con acceso: se puede copiar ahí ahora. */
+  ready: boolean
+}
+
 export interface RemoteProgress {
   pct: number
   done: number
@@ -45,9 +53,9 @@ export interface RemoteProgress {
 export type Msg =
   | { t: 'challenge'; nonce: string }
   | { t: 'hello'; proof: string; device: string }
-  | { t: 'ready'; pc: string }
+  | { t: 'ready'; pc: string; disks: PcDisk[]; active: string | null }
   | { t: 'denied'; reason: string }
-  | { t: 'start'; device: string; files: RemoteFile[]; dirs: string[] }
+  | { t: 'start'; device: string; files: RemoteFile[]; dirs: string[]; diskKey?: string }
   | { t: 'get'; id: number; path: string }
   | { t: 'chunk'; id: number; data: ArrayBuffer }
   | { t: 'eof'; id: number }

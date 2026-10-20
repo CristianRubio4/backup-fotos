@@ -18,13 +18,14 @@ import {
   serveFile,
   type Msg,
   type Pairing,
+  type PcDisk,
   type RemoteProgress,
 } from '../platform/remote'
 import { walkSource } from '../platform/walk'
 import { activeDisk, refreshDisks, startRemote, useApp, type SourceView } from './app'
 
 type ReceiverState = 'off' | 'starting' | 'on' | 'error'
-type SenderState = 'idle' | 'connecting' | 'scanning' | 'sending' | 'done' | 'error'
+type SenderState = 'idle' | 'connecting' | 'online' | 'offline' | 'scanning' | 'sending' | 'done' | 'error'
 
 interface RemoteStore {
   // ---- PC de casa (recibe) ----
@@ -45,14 +46,28 @@ interface RemoteStore {
   senderInfo: string | null
   progress: RemoteProgress | null
   result: Extract<Msg, { t: 'done' }> | null
+  /** El PC al que está conectado el móvil: su nombre y sus destinos. */
+  pc: { name: string; disks: PcDisk[] } | null
+  /** Destino del PC elegido desde el móvil. */
+  chosenDisk: string | null
   loadTarget(): Promise<void>
   forgetTarget(): Promise<void>
+  /** Conecta con el PC (se hace solo al entrar en "Móvil ↔ PC"). */
+  connect(): Promise<void>
+  chooseDisk(key: string): void
   send(): Promise<void>
   cancelSend(): void
 }
 
 let peer: Peer | null = null
-let senderConn: DataConnection | null = null
+
+/** Conexión del móvil con el PC (abierta al entrar en "Móvil ↔ PC"). */
+interface Session {
+  peer: Peer
+  conn: DataConnection
+  files: Map<string, SourceFile>
+}
+let session: Session | null = null
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -67,6 +82,8 @@ export const useRemote = create<RemoteStore>((set, get) => ({
   senderInfo: null,
   progress: null,
   result: null,
+  pc: null,
+  chosenDisk: null,
 
   // ================= PC de casa =================
 
@@ -145,92 +162,115 @@ export const useRemote = create<RemoteStore>((set, get) => ({
     set({ target: null })
   },
 
-  async send() {
+  async connect() {
     const target = get().target
-    const app = useApp.getState()
-    if (!target || get().sender === 'connecting' || get().sender === 'scanning' || get().sender === 'sending') return
-    if (app.sources.length === 0) return set({ sender: 'error', senderInfo: 'Añade primero las carpetas del móvil (Inicio → Fotos que copiar → Añadir): DCIM, Pictures, WhatsApp…' })
-    // Permisos de las carpetas: con el clic.
-    const sources: SourceView[] = []
-    for (const s of app.sources) if ((await ensurePermission(s.handle, 'read', true).catch(() => 'denied' as const)) === 'granted') sources.push(s)
-    if (!sources.length) return set({ sender: 'error', senderInfo: 'Sin permiso para leer las carpetas de fotos.' })
-
-    set({ sender: 'connecting', senderInfo: `Conectando con "${target.pcName}"…`, progress: null, result: null })
-    keepScreenOn(true)
+    if (!target || session || ['connecting', 'scanning', 'sending'].includes(get().sender)) return
+    set({ sender: 'connecting', senderInfo: `Conectando con "${target.pcName}"…` })
     let p: Peer
     try {
       p = await openPeer()
     } catch (err) {
-      keepScreenOn(false)
-      return set({ sender: 'error', senderInfo: peerError(err).message })
+      return set({ sender: 'offline', senderInfo: peerError(err).message })
     }
     const conn = p.connect(target.pcId, { reliable: true, serialization: 'binary' })
-    senderConn = conn
-    const finish = (state: SenderState, info: string | null) => {
+    const s: Session = { peer: p, conn, files: new Map() }
+    session = s
+    const end = (state: SenderState, info: string | null) => {
+      if (session !== s) return
+      session = null
       keepScreenOn(false)
       set({ sender: state, senderInfo: info })
       setTimeout(() => p.destroy(), 1000)
-      senderConn = null
     }
     const opened = await Promise.race([
       new Promise<boolean>((r) => conn.once('open', () => r(true))),
       new Promise<boolean>((r) => p.once('error', () => r(false))),
       wait(25_000).then(() => false),
     ])
-    if (!opened) return finish('error', `"${target.pcName}" no responde. Comprueba que en el PC está abierta la web en "Móvil ↔ PC" con "Recibir del móvil" activado, y que tiene internet.`)
+    if (!opened) return end('offline', `"${target.pcName}" no está recibiendo. En el PC: abre la web → Móvil ↔ PC → Recibir del móvil (y que tenga internet y no esté suspendido).`)
 
-    const files = new Map<string, SourceFile>()
     conn.on('data', async (raw) => {
       const m = raw as Msg
       switch (m.t) {
         case 'challenge':
-          conn.send({ t: 'hello', proof: await proofFor(target.secret, m.nonce), device: app.device.name || 'Móvil' } satisfies Msg)
+          conn.send({ t: 'hello', proof: await proofFor(target.secret, m.nonce), device: useApp.getState().device.name || 'Móvil' } satisfies Msg)
           break
         case 'denied':
-          finish('error', m.reason)
+          end('error', m.reason)
           break
         case 'ready': {
-          set({ sender: 'scanning', senderInfo: 'Buscando fotos en el móvil…' })
-          const list: SourceFile[] = []
-          const dirs: string[] = []
-          for (const s of sources) {
-            try {
-              const r = await walkSource(s.handle, null, noControl, (n) => set({ senderInfo: `Buscando fotos en el móvil… ${n}` }), {
-                label: s.name,
-                skipSent: !app.settings.whatsappSent,
-              })
-              list.push(...r.files)
-              dirs.push(...(r.dirs ?? []))
-            } catch {
-              // Carpeta ilegible: se sigue con las demás.
-            }
-          }
-          for (const f of list) files.set(f.relPath, f)
-          set({ sender: 'sending', senderInfo: `Enviando ${list.length} fotos y vídeos a "${target.pcName}"…` })
-          conn.send({ t: 'start', device: app.device.name || 'Móvil', files: list.map((f) => ({ path: f.relPath, name: f.name, size: f.size, mtime: f.lastModified })), dirs } satisfies Msg)
+          // Los destinos del PC: por defecto, el de siempre (o el que se eligió la última vez).
+          const keep = get().chosenDisk
+          const chosen = m.disks.some((d) => d.key === keep) ? keep : (m.active ?? m.disks.find((d) => d.ready)?.key ?? null)
+          set({ sender: 'online', senderInfo: null, pc: { name: m.pc, disks: m.disks }, chosenDisk: chosen })
           break
         }
         case 'get':
-          void serveFile(conn, m.id, files.get(m.path))
+          void serveFile(conn, m.id, s.files.get(m.path))
           break
         case 'progress':
           set({ progress: m })
           break
         case 'done':
           set({ result: m })
-          finish(m.outcome === 'completed' ? 'done' : 'error', m.outcome === 'completed' ? `Copia terminada en "${target.pcName}".` : (m.failure ?? 'La copia no se ha completado. Vuelve a pulsar "Copiar": continuará donde se quedó.'))
+          end(m.outcome === 'completed' ? 'done' : 'error', m.outcome === 'completed' ? `Copia terminada en "${target.pcName}".` : (m.failure ?? 'La copia no se ha completado. Vuelve a pulsar "Copiar": continuará donde se quedó.'))
           break
       }
     })
     conn.on('close', () => {
-      if (get().sender === 'sending' || get().sender === 'scanning' || get().sender === 'connecting')
-        finish('error', 'Se ha cortado la conexión con el PC. Vuelve a pulsar "Copiar": continuará donde se quedó, sin repetir nada.')
+      const busy = get().sender === 'sending' || get().sender === 'scanning'
+      end(busy ? 'error' : 'offline', busy ? 'Se ha cortado la conexión con el PC. Vuelve a pulsar "Copiar": continuará donde se quedó, sin repetir nada.' : 'Desconectado del PC.')
     })
   },
 
+  chooseDisk(key) {
+    set({ chosenDisk: key })
+  },
+
+  async send() {
+    const target = get().target
+    const app = useApp.getState()
+    if (!target || ['scanning', 'sending'].includes(get().sender)) return
+    if (app.sources.length === 0) return set({ senderInfo: 'Añade primero las carpetas de este móvil (botones de arriba).' })
+    // Permisos de las carpetas: con el clic.
+    const sources: SourceView[] = []
+    for (const src of app.sources) if ((await ensurePermission(src.handle, 'read', true).catch(() => 'denied' as const)) === 'granted') sources.push(src)
+    if (!sources.length) return set({ senderInfo: 'Sin permiso para leer las carpetas de fotos.' })
+    if (!session) {
+      await get().connect()
+      for (let i = 0; i < 100 && get().sender === 'connecting'; i++) await wait(200)
+    }
+    const s = session
+    if (!s || get().sender !== 'online') return
+    keepScreenOn(true)
+    set({ sender: 'scanning', senderInfo: 'Buscando fotos en el móvil…', progress: null, result: null })
+    const list: SourceFile[] = []
+    const dirs: string[] = []
+    for (const src of sources) {
+      try {
+        const r = await walkSource(src.handle, null, noControl, (n) => set({ senderInfo: `Buscando fotos en el móvil… ${n}` }), {
+          label: src.name,
+          skipSent: !app.settings.whatsappSent,
+        })
+        list.push(...r.files)
+        dirs.push(...(r.dirs ?? []))
+      } catch {
+        // Carpeta ilegible: se sigue con las demás.
+      }
+    }
+    for (const f of list) s.files.set(f.relPath, f)
+    set({ sender: 'sending', senderInfo: `Enviando ${list.length} fotos y vídeos a "${target.pcName}"…` })
+    s.conn.send({
+      t: 'start',
+      device: app.device.name || 'Móvil',
+      files: list.map((f) => ({ path: f.relPath, name: f.name, size: f.size, mtime: f.lastModified })),
+      dirs,
+      diskKey: get().chosenDisk ?? undefined,
+    } satisfies Msg)
+  },
   cancelSend() {
     try {
-      senderConn?.send({ t: 'cancel' } satisfies Msg)
+      session?.conn.send({ t: 'cancel' } satisfies Msg)
     } catch {
       // Ya cerrada.
     }
@@ -262,7 +302,13 @@ function acceptPhone(conn: DataConnection, pairing: Pairing) {
         return
       }
       useRemote.setState({ phone: device })
-      conn.send({ t: 'ready', pc: pairing.pcName } satisfies Msg)
+      const app = useApp.getState()
+      conn.send({
+        t: 'ready',
+        pc: pairing.pcName,
+        disks: app.disks.map((d) => ({ key: d.key, name: d.name, ready: app.diskStates[d.key]?.state === 'connected' })),
+        active: activeDisk()?.key ?? null,
+      } satisfies Msg)
       return
     }
     if (client.handle(m)) return
@@ -299,7 +345,7 @@ function acceptPhone(conn: DataConnection, pairing: Pairing) {
         }
       })
       try {
-        const report = await startRemote({ name: device, files, dirs: m.dirs })
+        const report = await startRemote({ name: device, files, dirs: m.dirs }, m.diskKey)
         conn.send({
           t: 'done',
           outcome: report?.outcome ?? 'failed',

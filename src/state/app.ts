@@ -563,11 +563,12 @@ export interface RemoteSource {
  * el disco tiene que estar conectado y con permiso (se concedió al activar "Recibir del móvil").
  * Si la última copia de ese móvil se quedó a medias, se continúa en su carpeta.
  */
-export async function startRemote(remote: RemoteSource): Promise<BackupReport | null> {
+export async function startRemote(remote: RemoteSource, diskKey?: string): Promise<BackupReport | null> {
   const s = useApp.getState()
   if (s.running) throw new Error('El PC está haciendo otra copia ahora mismo.')
-  const disk = activeDisk()
-  if (!disk || s.diskStates[disk.key]?.state !== 'connected') throw new Error('El disco de backup del PC no está conectado.')
+  // El destino elegido desde el móvil (o el de siempre del PC).
+  const disk = (diskKey && s.disks.find((d) => d.key === diskKey)) || activeDisk()
+  if (!disk || s.diskStates[disk.key]?.state !== 'connected') throw new Error(`El destino${disk ? ` "${disk.name}"` : ''} no está conectado en el PC.`)
   if ((await disk.handle.queryPermission({ mode: 'readwrite' })) !== 'granted') throw new Error('El PC ha perdido el permiso del disco: vuelve a activar "Recibir del móvil" en el PC.')
   if (disk.encrypted && isLocked(disk)) throw new Error('El disco del PC está cifrado y bloqueado.')
   const pending = s.pendingRun
