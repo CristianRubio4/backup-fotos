@@ -53,20 +53,31 @@ public static class ControlFiles
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
 
+    /// <summary>Carpeta de los archivos de control dentro de cada copia (la copia solo muestra fotos y vídeos).</summary>
+    public const string Dir = ".backup-ignore";
+
+    static string ControlPath(string folder, string name)
+    {
+        var dir = Path.Combine(folder, Dir);
+        Directory.CreateDirectory(dir);
+        if (OperatingSystem.IsWindows()) File.SetAttributes(dir, File.GetAttributes(dir) | FileAttributes.Hidden);
+        return Path.Combine(dir, name);
+    }
+
     public static void WriteDiskId(string folder, DiskIdFile info) =>
-        WriteHidden(Path.Combine(folder, DiskId), JsonSerializer.Serialize(info, new JsonSerializerOptions(Json) { WriteIndented = true }));
+        WriteHidden(ControlPath(folder, DiskId), JsonSerializer.Serialize(info, new JsonSerializerOptions(Json) { WriteIndented = true }));
 
     /// <summary>Escritura segura: .tmp completo → sustituye al manifest y deja el anterior en .bak.</summary>
     public static void SaveManifest(string folder, Manifest m)
     {
-        var tmp = Path.Combine(folder, ManifestTmp);
-        var final = Path.Combine(folder, Manifest);
+        var tmp = ControlPath(folder, ManifestTmp);
+        var final = ControlPath(folder, Manifest);
         WriteHidden(tmp, JsonSerializer.Serialize(m, Json));
         if (File.Exists(final))
         {
             // File.Replace no admite destinos ocultos en todos los sistemas: se quita el atributo antes.
             Unhide(final);
-            var bak = Path.Combine(folder, ManifestBak);
+            var bak = ControlPath(folder, ManifestBak);
             if (File.Exists(bak)) Unhide(bak);
             File.Replace(tmp, final, bak, ignoreMetadataErrors: true);
             Hide(bak);
@@ -77,8 +88,10 @@ public static class ControlFiles
 
     public static Manifest? Load(string folder)
     {
-        var path = Path.Combine(folder, Manifest);
-        return File.Exists(path) ? JsonSerializer.Deserialize<Manifest>(File.ReadAllText(path), Json) : null;
+        // En .backup-ignore, o suelto en copias de versiones anteriores.
+        foreach (var path in new[] { Path.Combine(folder, Dir, Manifest), Path.Combine(folder, Manifest) })
+            if (File.Exists(path)) return JsonSerializer.Deserialize<Manifest>(File.ReadAllText(path), Json);
+        return null;
     }
 
     static void WriteHidden(string path, string text)

@@ -70,8 +70,10 @@ describe('una carpeta por copia', () => {
     // Nada suelto en la raíz del destino: el disco-id y el manifest van dentro de cada copia.
     const root = [...t.files.keys()].filter((k) => !k.includes('/'))
     expect(root).toEqual([])
-    expect(t.files.has(`Copia 2026-10-19 09h05/${MANIFEST_FILE}`)).toBe(true)
-    expect(t.files.has(`Copia 2026-10-19 09h05/${DISK_ID_FILE}`)).toBe(true)
+    // Todo el registro, junto en .backup-ignore (la carpeta de la copia solo muestra fotos y vídeos).
+    expect(t.files.has(`Copia 2026-10-19 09h05/.backup-ignore/${MANIFEST_FILE}`)).toBe(true)
+    expect(t.files.has(`Copia 2026-10-19 09h05/.backup-ignore/${DISK_ID_FILE}`)).toBe(true)
+    expect([...t.files.keys()].filter((k) => k.startsWith('Copia 2026-10-19 09h05/.backup-')).filter((k) => !k.includes('/.backup-ignore/'))).toEqual([])
   })
 
   it('la carpeta lleva el nombre del móvil (del EXIF)', async () => {
@@ -147,7 +149,7 @@ describe('una carpeta por copia', () => {
       'Móvil - 2026-10-19 12h00/carp2/foto 1.jpg',
       'Móvil - 2026-10-19 12h00/carp2/foto 3.jpg',
     ])
-    expect(parseManifest(await t.readText(`${r.folder}/${MANIFEST_FILE}`))!.entries).toHaveLength(4)
+    expect(parseManifest(await t.readText(`${r.folder}/.backup-ignore/${MANIFEST_FILE}`))!.entries).toHaveLength(4)
     // Continuar esa misma copia: ya está todo en su sitio; no se lee nada del móvil.
     reads.length = 0
     const again = await run(t, phone(), { ...snap(t, new Date(2026, 9, 19, 13, 0)), ...opts, runFolderName: r.folder })
@@ -203,7 +205,7 @@ describe('una carpeta por copia', () => {
     const cache = new Map<string, string>()
     const hashCache: HashCache = { get: async (f) => cache.get(f.relPath), set: async (f, h) => void cache.set(f.relPath, h) }
     const first = await run(t, [src('DCIM/IMG_1.jpg', 'uno', MAY), src('DCIM/IMG_2.jpg', 'dos dos', MAY)], { ...snap(t, new Date(2026, 9, 19, 10, 0)), readOnce: true, slowSource: true, hashCache })
-    const known = new Map(parseManifest(await t.readText(`${first.folder}/${MANIFEST_FILE}`))!.entries.map((e) => [e.hash, { ...e, diskPath: `${first.folder}/${e.diskPath}` }]))
+    const known = new Map(parseManifest(await t.readText(`${first.folder}/.backup-ignore/${MANIFEST_FILE}`))!.entries.map((e) => [e.hash, { ...e, diskPath: `${first.folder}/${e.diskPath}` }]))
     const second = await run(t, [src('DCIM/IMG_1.jpg', 'uno', MAY), src('DCIM/IMG_2.jpg', 'dos dos', MAY), src('DCIM/IMG_3.jpg', 'tres tres tres', MAY)], {
       ...snap(t, new Date(2026, 9, 20, 10, 0)),
       readOnce: true,
@@ -232,6 +234,29 @@ describe('una carpeta por copia', () => {
     const t = new MemoryTarget()
     const r = await run(t, [src('IMG_1.jpg', 'a', MAY)], { ...snap(t, new Date(2026, 9, 19)), encrypted: true })
     expect(r.folder).toBeUndefined()
+  })
+})
+
+describe('copias de versiones anteriores (registro suelto en la carpeta)', () => {
+  it('se continúan sin perder nada y el registro pasa a .backup-ignore', async () => {
+    const t = new MemoryTarget()
+    // Copia antigua: registro suelto en la carpeta.
+    const folder = 'Pixel 8 - 2026-10-18 20h00'
+    const old = t.child(folder)
+    const first = await run(old as MemoryTarget, [src('DCIM/IMG_1.jpg', 'uno', MAY)], {})
+    expect(first.copied).toHaveLength(1)
+    expect(t.files.has(`${folder}/${MANIFEST_FILE}`)).toBe(true)
+    // Continuarla con la versión nueva.
+    const r = await run(t, [src('DCIM/IMG_1.jpg', 'uno', MAY), src('DCIM/IMG_2.jpg', 'dos dos', MAY)], {
+      settings: { runFolder: true },
+      openRunFolder: async (n) => t.child(n),
+      runFolderName: folder,
+    })
+    expect(r.copied.map((c) => c.sourcePath)).toEqual(['DCIM/IMG_2.jpg'])
+    expect(r.duplicates.map((d) => d.sourcePath)).toEqual(['DCIM/IMG_1.jpg'])
+    expect(t.files.has(`${folder}/.backup-ignore/${MANIFEST_FILE}`)).toBe(true)
+    expect(t.files.has(`${folder}/${MANIFEST_FILE}`)).toBe(false)
+    expect([...t.files.keys()].filter((k) => k.startsWith(`${folder}/.backup-`) && !k.startsWith(`${folder}/.backup-ignore/`))).toEqual([])
   })
 })
 

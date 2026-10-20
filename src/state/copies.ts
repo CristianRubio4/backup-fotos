@@ -1,3 +1,4 @@
+import { withControlDir } from '../core/control-dir'
 import { readDiskId } from '../core/disk'
 import type { ManifestEntry } from '../core/manifest/schema'
 import { ManifestStore } from '../core/manifest/store'
@@ -26,7 +27,8 @@ export async function loadSets(d: DiskRecord): Promise<BackupSet[]> {
   const copies: BackupSet[] = []
   for await (const [name, h] of d.handle.entries()) {
     if (h.kind !== 'directory' || name.startsWith('.') || name.startsWith('$')) continue
-    const sub = new FsaTarget(h as FileSystemDirectoryHandle)
+    // Registro en .backup-ignore/ (o suelto, en copias de versiones anteriores).
+    const sub = withControlDir(new FsaTarget(h as FileSystemDirectoryHandle))
     const info = await readDiskId(sub).catch(() => null)
     if (!info) continue
     try {

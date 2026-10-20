@@ -9,6 +9,7 @@ import { extOf, isVideo } from '../media'
 import { datedName, dominantCamera, joinPath, mirrorPath, pickDate, runFolderName, targetDir, toLocalIso, withSuffix } from '../naming'
 import { mapPool } from '../pool'
 import { incorporateDiskFiles } from './incorporate'
+import { withControlDir } from '../control-dir'
 import type { Device, Settings } from '../settings'
 import {
   CancelledError,
@@ -290,9 +291,12 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       const name = input.runFolderName ?? runFolderName(new Date(report.startedAt), input.sourceName?.() ?? (input.slowSource ? null : await guessCamera(files, input.readExif, concurrency)))
       report.folder = name
       const parent = target
-      target = await input.openRunFolder!(name).catch(async (err) => {
-        throw (await parent.ping()) ? err : new DiskDisconnectedError()
-      })
+      // Los archivos de control de la copia van juntos en ".backup-ignore": la carpeta solo muestra fotos y vídeos.
+      target = withControlDir(
+        await input.openRunFolder!(name).catch(async (err) => {
+          throw (await parent.ping()) ? err : new DiskDisconnectedError()
+        }),
+      )
     }
 
     // ---- Disco y manifest ----

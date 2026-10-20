@@ -78,9 +78,11 @@ public sealed class MtpHub : IDeviceHub, IDisposable
         return (IReadOnlyList<DeviceInfo>)list;
     });
 
-    public void With(string deviceId, Action<IMediaSource> fn) => Run(() =>
+    public void With(string deviceId, Action<IMediaSource> fn)
     {
         // Enlace móvil: es una carpeta del PC; al leer cada archivo, Windows lo trae del móvil por wifi.
+        // No usa WPD, así que no pasa por el hilo único: varias fotos se piden a la vez (por wifi, lo que
+        // más tarda es la espera de cada una, no la velocidad).
         if (deviceId.StartsWith(LinkPrefix, StringComparison.Ordinal))
         {
             var name = deviceId[LinkPrefix.Length..];
@@ -88,8 +90,13 @@ public sealed class MtpHub : IDeviceHub, IDisposable
             if (!Directory.Exists(path))
                 throw new FileNotFoundException("El móvil ya no aparece en Enlace móvil. Abre la app Enlace a Windows en el móvil y comprueba que está conectado.");
             fn(new FolderSource(path, name));
-            return true;
+            return;
         }
+        WithDevice(deviceId, fn);
+    }
+
+    void WithDevice(string deviceId, Action<IMediaSource> fn) => Run(() =>
+    {
         if (!_open.TryGetValue(deviceId, out var source))
         {
             var d = MediaDevice.GetDevices().FirstOrDefault(x => x.DeviceId == deviceId)

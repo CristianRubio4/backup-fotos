@@ -94,8 +94,9 @@ public class BackupTests
         Assert.Equal(r.Folder, folder);
         Assert.Equal(53, MediaFiles(folder).Count);
         // Los archivos de control, dentro de la carpeta de la copia.
-        Assert.True(File.Exists(Path.Combine(folder, ".backup-disk-id")));
-        Assert.True(File.Exists(Path.Combine(folder, ".backup-manifest.json")));
+        Assert.True(File.Exists(Path.Combine(folder, ".backup-ignore", ".backup-disk-id")));
+        Assert.True(File.Exists(Path.Combine(folder, ".backup-ignore", ".backup-manifest.json")));
+        Assert.Empty(Directory.EnumerateFiles(folder, ".backup-*"));
         Assert.Empty(Directory.EnumerateFiles(folder, "*.part", SearchOption.AllDirectories));
         Assert.Empty(Directory.EnumerateFiles(folder, ".*.part"));
     }
@@ -116,11 +117,11 @@ public class BackupTests
     {
         using var dest = new TempDir();
         var r = Run(new FakePhone().Add("DCIM/a.jpg", "foto a").Add("DCIM/b.mp4", "vídeo b"), dest.Path);
-        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(r.Folder!, ".backup-manifest.json")));
+        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(r.Folder!, ".backup-ignore", ".backup-manifest.json")));
         var root = doc.RootElement;
         Assert.Equal(1, root.GetProperty("version").GetInt32());
         var diskId = root.GetProperty("diskId").GetString();
-        using var id = JsonDocument.Parse(File.ReadAllText(Path.Combine(r.Folder!, ".backup-disk-id")));
+        using var id = JsonDocument.Parse(File.ReadAllText(Path.Combine(r.Folder!, ".backup-ignore", ".backup-disk-id")));
         Assert.Equal(diskId, id.RootElement.GetProperty("id").GetString());
         var entries = root.GetProperty("entries").EnumerateArray().ToList();
         Assert.Equal(2, entries.Count);
