@@ -48,6 +48,10 @@ Galaxy S23 - 2026-10-20 10h15/
 
 La próxima vez: abre el programa, conecta el móvil y pulsa **Hacer backup**. El móvil queda recordado.
 
+**Aún más cómodo (opcional):**
+- En la ventana de BackupFotos.exe marca **"Abrir al iniciar Windows y seguir en segundo plano"**: arranca solo con Windows y se queda como un icono junto al reloj, así que el conector está siempre listo. Cerrar la ventana lo deja ahí; para salir del todo: clic derecho en el icono → **Salir**.
+- En la web, bajo "Fotos que copiar", marca **"Copia automática al conectar el móvil"**: con la web abierta en el PC, al enchufar el móvil se copia **solo lo nuevo** sin pulsar nada, y te avisa al terminar. (Abrir la web con el móvil ya enchufado no lanza nada; un cable flojo tampoco lanza copias seguidas.)
+
 **B. Sin cable, por Enlace móvil (wifi, más lento)**
 
 1. Ten el móvil enlazado con **Enlace móvil / Enlace a Windows** (aparece en el Explorador, en "Dispositivos móviles"). En el móvil, la app **Enlace a Windows** activada y con permiso para los archivos.
