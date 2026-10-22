@@ -1,4 +1,4 @@
-export type Phase = 'disk' | 'scan' | 'hash' | 'dedupe' | 'analyze' | 'copy' | 'verify' | 'save'
+export type Phase = 'disk' | 'scan' | 'hash' | 'dedupe' | 'analyze' | 'confirm' | 'copy' | 'verify' | 'save'
 
 export const PHASES: Array<{ id: Phase; label: string }> = [
   { id: 'disk', label: 'Revisando el disco' },
@@ -6,6 +6,7 @@ export const PHASES: Array<{ id: Phase; label: string }> = [
   { id: 'hash', label: 'Calculando hashes' },
   { id: 'dedupe', label: 'Comprobando duplicados' },
   { id: 'analyze', label: 'Analizando' },
+  { id: 'confirm', label: 'Resumen: esperando tu confirmación' },
   { id: 'copy', label: 'Copiando' },
   { id: 'verify', label: 'Verificando' },
   { id: 'save', label: 'Guardando manifest' },

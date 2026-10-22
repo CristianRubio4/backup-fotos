@@ -69,10 +69,25 @@ export interface BackupReport {
   incorporated: number
   bytesCopied: number
   manifest: ManifestRecovery | null
+  /** Se canceló en el resumen, antes de copiar nada. */
+  previewCancelled?: boolean
   /** Carpetas del origen en las que se ha buscado (hasta 500) y cuántas son en total. */
   searched?: { count: number; sample: string[] }
   /** Carpeta de esta copia en el disco ("iPhone 15 Pro - 2026-10-19 14h30"), si se usa una por backup. */
   folder?: string
+}
+
+/** Lo que se va a copiar, para decidir antes de empezar. */
+export interface PreSummary {
+  /** Fotos y vídeos encontrados en total. */
+  found: number
+  /** A copiar con "todo". */
+  all: { count: number; bytes: number; photos: number; videos: number; heic: number }
+  /** A copiar con "solo lo nuevo" (lo que no está ya en ninguna copia del disco). */
+  fresh: { count: number; bytes: number }
+  /** Ya en esta copia (al continuar) o repetidas. */
+  skipped: number
+  folder: string | null
 }
 
 export interface ScanResult {
@@ -143,6 +158,13 @@ export interface EngineInput {
    * la HEIC tal cual). En el disco queda solo el JPG.
    */
   convertHeic?: (heic: Blob) => Promise<Blob | null>
+  /**
+   * Resumen antes de empezar: con todo localizado y antes de copiar nada, se espera la
+   * decisión: copiar todo, solo lo nuevo, o nada.
+   */
+  confirm?: (s: PreSummary) => Promise<'all' | 'new' | 'cancel'>
+  /** Para contar lo nuevo en el resumen: ¿esta huella ya está en alguna copia del disco? */
+  estimateKnown?: (hash: string) => ManifestEntry | undefined
   /** Archivos que se hashean/analizan a la vez (uno por Worker). La copia siempre es de uno en uno. */
   concurrency?: number
   now?: () => Date
@@ -401,10 +423,13 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     // Copia rápida: las huellas ya conocidas (de backups anteriores) salen de la caché, sin leer nada.
     // Así se saltan al instante lo ya copiado al continuar una copia o con "solo lo nuevo".
     if (input.readOnce && input.hashCache) {
-      for (const f of files) {
-        const h = await input.hashCache.get(f).catch(() => undefined)
-        if (h) hashes.set(f, h)
-      }
+      const cache = input.hashCache
+      const known = cache.getMany
+        ? await cache.getMany(files).catch(() => [] as Array<string | undefined>)
+        : await Promise.all(files.map((f) => cache.get(f).catch(() => undefined)))
+      files.forEach((f, i) => {
+        if (known[i]) hashes.set(f, known[i]!)
+      })
     }
     // En paralelo (varios Workers): calcular hashes es CPU + lectura del origen, no escritura en el disco.
     const hashErrors = await mapPool(preHash, concurrency, async (f) => {
@@ -552,6 +577,39 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
     progress.totalBytes = baseBytes + sum(preHash) + sum(toCopy.map((h) => h.file)) * copyFactor
     progress.doneBytes = Math.min(progress.doneBytes, progress.totalBytes)
 
+    // ---- Resumen antes de empezar ----
+    if (input.confirm && toCopy.length > 0) {
+      const est = input.estimateKnown
+      const isFresh = (h: HashedFile) => !(h.hash && est?.(h.hash))
+      const fresh = toCopy.filter(isFresh)
+      const files = toCopy.map((h) => h.file)
+      const videos = files.filter((f) => isVideo(f.name)).length
+      setPhase('confirm', toCopy.length)
+      const choice = await input.confirm({
+        found: report.scanned,
+        all: { count: files.length, bytes: sum(files), photos: files.length - videos, videos, heic: input.convertHeic ? files.filter((f) => HEIC_RE.test(f.name)).length : 0 },
+        fresh: { count: fresh.length, bytes: sum(fresh.map((h) => h.file)) },
+        skipped: report.duplicates.length,
+        folder: report.folder ?? null,
+      })
+      if (choice === 'cancel') {
+        report.previewCancelled = true
+        throw new CancelledError()
+      }
+      if (choice === 'new' && fresh.length < toCopy.length) {
+        for (const h of toCopy) {
+          if (isFresh(h)) continue
+          const e = est!(h.hash!)!
+          const dup = item(h.file, { diskPath: e.diskPath, reason: 'Ya está en una copia anterior' })
+          fromRoot.add(dup)
+          report.duplicates.push(dup)
+          counters.duplicates++
+        }
+        toCopy.splice(0, toCopy.length, ...fresh)
+      }
+      progress.totalBytes = progress.doneBytes + sum(toCopy.map((h) => h.file)) * copyFactor
+    }
+
     // ---- Copia y verificación ----
     setPhase('copy', toCopy.length)
     const reserved = new Set<string>()
@@ -670,7 +728,12 @@ export async function runBackup(input: EngineInput): Promise<BackupReport> {
       }
       try {
         step(source.relPath, 'read')
-        let blob = await f.getFile()
+        // Una lectura que se corta (p. ej. un vídeo grande del móvil por cable) se reintenta una vez.
+        let blob = await f.getFile().catch(async (err) => {
+          if (err instanceof CancelledError) throw err
+          await new Promise((r) => setTimeout(r, 1500))
+          return f.getFile()
+        })
         let known = { hash: hf.hash }
         let converted = false
         // HEIC → JPG comprobado (si no se puede, se guarda la HEIC tal cual: nunca se pierde una foto).

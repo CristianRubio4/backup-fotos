@@ -138,6 +138,22 @@ public class ConnectorTests
     }
 
     [Fact]
+    public async Task Un_video_grande_llega_entero_mientras_se_lee_y_queda_en_cache()
+    {
+        var big = new byte[(int)ConnectorServer.StreamFromBytes + 3 * 1024 * 1024 + 17];
+        new Random(11).NextBytes(big);
+        var phone = new FakePhone().Add("DCIM/VID_largo.mp4", big);
+        var (server, http, cache) = Start(phone);
+        using var _ = server; using var __ = http; using var ___ = cache;
+        await http.SendAsync(Get("/v1/scan?device=dev-0"));
+        var first = await (await http.SendAsync(Get("/v1/file?device=dev-0&path=DCIM%2FVID_largo.mp4"))).Content.ReadAsByteArrayAsync();
+        Assert.Equal(big, first);
+        var again = await (await http.SendAsync(Get("/v1/file?device=dev-0&path=DCIM%2FVID_largo.mp4"))).Content.ReadAsByteArrayAsync();
+        Assert.Equal(big, again);
+        Assert.Equal(1, phone.Copies); // la segunda vez, de la caché
+    }
+
+    [Fact]
     public async Task Errores_claros_si_falta_el_movil_o_el_archivo()
     {
         var (server, http, cache) = Start(new FakePhone().Add("DCIM/a.jpg", "x"));

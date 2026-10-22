@@ -41,6 +41,8 @@ export interface Settings {
   heicToJpg: boolean
   /** Al conectar por cable un móvil elegido como origen, copiar solo lo nuevo sin pulsar nada (con la web abierta). */
   autoBackup: boolean
+  /** Antes de copiar, mostrar cuántas fotos hay, cuántas son nuevas y cuánto tardará. */
+  showSummary: boolean
   /** Avisar si un disco lleva más de estos días sin backup. */
   staleDays: number
   /** Recordar comprobar la integridad del disco cada estos meses. */
@@ -75,6 +77,7 @@ export const DEFAULT_SETTINGS: Settings = {
   whatsappSent: true,
   heicToJpg: true,
   autoBackup: false,
+  showSummary: true,
   staleDays: 30,
   integrityMonths: 6,
   zipBatchMB: typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 300 : 1000,

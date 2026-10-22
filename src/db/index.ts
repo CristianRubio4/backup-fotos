@@ -258,6 +258,11 @@ export const db = {
       async set(f, hash) {
         await (await dbp).put('hashCache', { size: f.size, lastModified: f.lastModified, hash }, key(f))
       },
+      async getMany(files) {
+        const store = (await dbp).transaction('hashCache').store
+        const found = await Promise.all(files.map((f) => store.get(key(f))))
+        return found.map((c, i) => (c && c.size === files[i].size && c.lastModified === files[i].lastModified ? c.hash : undefined))
+      },
     }
   },
 

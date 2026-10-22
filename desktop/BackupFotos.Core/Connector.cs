@@ -45,6 +45,9 @@ public sealed class ConnectorServer : IDisposable
     readonly FileCache _cache;
     readonly CancellationTokenSource _stop = new();
     readonly string _version;
+    /** A partir de este tamaño, el archivo se envía mientras se lee del móvil. */
+    public const long StreamFromBytes = 16L << 20;
+
     long _readBytes;
     TimeSpan _readTime;
     int _readFiles;
@@ -216,9 +219,9 @@ public sealed class ConnectorServer : IDisposable
     void ServeFile(Stream stream, string origin, string deviceId, string path)
     {
         var cached = _cache.Get(deviceId, path);
+        var streamed = false;
         if (cached is null)
         {
-
             _hub.With(deviceId, source =>
             {
                 SourceEntry? entry = null;
@@ -229,6 +232,24 @@ public sealed class ConnectorServer : IDisposable
                     var dir = slash < 0 ? "" : path[..slash];
                     entry = source.List(dir).FirstOrDefault(e => !e.IsDirectory && e.Path == path)
                         ?? throw new FileNotFoundException($"No está en el móvil: {path}");
+                }
+                var via = deviceId.StartsWith("enlace:", StringComparison.Ordinal) ? "por wifi (Enlace móvil)" : "por cable";
+                // Archivos grandes (vídeos): se envían a la web A LA VEZ que se leen del móvil, sin esperar a tenerlos
+                // enteros (y se guardan en la caché por si se vuelven a pedir). Si el móvil se corta a mitad, la web
+                // lo nota (respuesta incompleta) y lo vuelve a pedir.
+                if (entry.Size >= StreamFromBytes)
+                {
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    WriteHead(stream, 200, origin, "application/octet-stream", -1);
+                    using var body = new ChunkedStream(stream);
+                    cached = _cache.Put(deviceId, path, s => source.CopyTo(entry, new TeeStream(s, body), _stop.Token));
+                    body.Finish();
+                    streamed = true;
+                    _readBytes += entry.Size;
+                    _readTime += clock.Elapsed;
+                    _readFiles++;
+                    Activity?.Invoke($"Copiando {path}\nLeyendo del móvil {via}: {Speed(_readBytes, _readTime)} de media, {_readTime.TotalMilliseconds / Math.Max(1, _readFiles):0} ms por archivo ({_readFiles:N0} archivos)");
+                    return;
                 }
                 // Si la conexión con el móvil se corta a mitad, se descarta lo leído y se vuelve a pedir entero.
                 for (var attempt = 1; ; attempt++)
@@ -241,7 +262,6 @@ public sealed class ConnectorServer : IDisposable
                         _readBytes += entry.Size;
                         _readTime += clock.Elapsed;
                         _readFiles++;
-                        var via = deviceId.StartsWith("enlace:", StringComparison.Ordinal) ? "por wifi (Enlace móvil)" : "por cable";
                         Activity?.Invoke($"Copiando {path}\nLeyendo del móvil {via}: {Speed(_readBytes, _readTime)} de media, {_readTime.TotalMilliseconds / Math.Max(1, _readFiles):0} ms por archivo ({_readFiles:N0} archivos)");
                         break;
                     }
@@ -253,6 +273,7 @@ public sealed class ConnectorServer : IDisposable
                 }
             });
         }
+        if (streamed) return;
         using var file = new FileStream(cached!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 20);
         WriteHead(stream, 200, origin, "application/octet-stream", file.Length);
         file.CopyTo(stream, 1 << 20);
@@ -345,6 +366,33 @@ public sealed class ConnectorServer : IDisposable
         _listener.Stop();
         _cache.Dispose();
     }
+}
+
+/// <summary>Escribe a la vez en dos sitios (la caché y la respuesta a la web).</summary>
+sealed class TeeStream(Stream a, Stream b) : Stream
+{
+    public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+
+    public override void Write(ReadOnlySpan<byte> buffer)
+    {
+        a.Write(buffer);
+        b.Write(buffer);
+    }
+
+    public override void Flush()
+    {
+        a.Flush();
+        b.Flush();
+    }
+
+    public override bool CanRead => false;
+    public override bool CanSeek => false;
+    public override bool CanWrite => true;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+    public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
 }
 
 /// <summary>Cuerpo HTTP "chunked" (para enviar el escaneo según avanza).</summary>

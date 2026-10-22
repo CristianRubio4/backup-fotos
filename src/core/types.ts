@@ -42,6 +42,8 @@ export interface DiskFile {
 export interface HashCache {
   get(f: SourceFile): Promise<string | undefined>
   set(f: SourceFile, hash: string): Promise<void>
+  /** Muchas a la vez (una sola transacción: con miles de fotos, segundos menos al empezar). */
+  getMany?(files: SourceFile[]): Promise<Array<string | undefined>>
 }
 
 export interface SourceFile {

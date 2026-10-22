@@ -1,12 +1,63 @@
 import { AlertOctagon, Ban, Check, Copy, Files, Pause, Play, ShieldQuestion, Square, Sun, Unplug } from 'lucide-react'
 import { Alert, Button, Card, PageHeader, ProgressRing, Stat } from '../components/ui'
 import { PHASES, STEP_LABEL } from '../core/backup/progress'
-import { formatBytes, formatDuration } from '../core/format'
+import type { PreSummary } from '../core/backup/engine'
+import { formatBytes, formatDuration, plural } from '../core/format'
 import { useEffect, useState } from 'react'
 import { activeDisk, useApp } from '../state/app'
 
+/** Resumen antes de empezar: cuánto hay, cuánto es nuevo y cuánto tardará. */
+function Summary({ preview: s, onAnswer }: { preview: PreSummary & { speed: number | null }; onAnswer: (c: 'all' | 'new' | 'cancel') => void }) {
+  const time = (bytes: number) => (s.speed ? `unos ${formatDuration(bytes / s.speed)}` : 'tiempo: se sabrá tras la primera copia')
+  const hasNewOption = s.fresh.count < s.all.count
+  return (
+    <section className="card animate-rise space-y-4 border-accent/40 p-5 sm:p-6">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Resumen antes de empezar</h2>
+        <p className="mt-1 text-sm text-muted">
+          {plural(s.found, 'foto o vídeo encontrado', 'fotos y vídeos encontrados')}
+          {s.skipped ? ` · ${plural(s.skipped, 'ya está', 'ya están')} en esta copia o repetidas` : ''}
+          {s.folder ? ` · se guardará en "${s.folder}"` : ''}.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-line p-4">
+          <div className="text-xs text-muted">Copiar todo</div>
+          <div className="mt-1 text-2xl font-semibold tabular-nums">{s.all.count.toLocaleString('es-ES')}</div>
+          <div className="text-sm text-muted">
+            {formatBytes(s.all.bytes)} · {time(s.all.bytes)}
+          </div>
+          <div className="mt-1 text-xs text-muted">
+            {plural(s.all.photos, 'foto', 'fotos')} y {plural(s.all.videos, 'vídeo', 'vídeos')}
+            {s.all.heic ? ` · ${s.all.heic} HEIC se guardarán como JPG` : ''}
+          </div>
+          <Button className="mt-3 w-full" variant={hasNewOption ? 'secondary' : 'primary'} onClick={() => onAnswer('all')}>
+            Copiar todo
+          </Button>
+        </div>
+        <div className={`rounded-2xl border p-4 ${hasNewOption ? 'border-accent/50 bg-accent-soft/40' : 'border-line opacity-70'}`}>
+          <div className="text-xs text-muted">Solo lo nuevo (lo que no está ya en ninguna copia del disco)</div>
+          <div className="mt-1 text-2xl font-semibold tabular-nums">{s.fresh.count.toLocaleString('es-ES')}</div>
+          <div className="text-sm text-muted">
+            {formatBytes(s.fresh.bytes)} · {time(s.fresh.bytes)}
+          </div>
+          <div className="mt-1 text-xs text-muted">
+            {hasNewOption ? `${(s.all.count - s.fresh.count).toLocaleString('es-ES')} ya están guardadas en otra copia` : 'Todo es nuevo (o aún no se conoce: lo que no se ha copiado antes desde este navegador cuenta como nuevo)'}
+          </div>
+          <Button className="mt-3 w-full" variant="primary" disabled={!hasNewOption} onClick={() => onAnswer('new')}>
+            Solo lo nuevo
+          </Button>
+        </div>
+      </div>
+      <Button variant="ghost" onClick={() => onAnswer('cancel')}>
+        No copiar ahora
+      </Button>
+    </section>
+  )
+}
+
 export function ProgressScreen() {
-  const { progress: p, paused, running, pause, resume, cancel, waitReason, batteryPaused, battery, wake, grantDisk, cableDevices } = useApp()
+  const { progress: p, paused, running, pause, resume, cancel, waitReason, batteryPaused, battery, wake, grantDisk, cableDevices, preview, answerPreview } = useApp()
   const disk = activeDisk()
   const [since] = useState(() => Date.now())
   // Reloj de la pantalla: "última actividad hace N s" se actualiza aunque no lleguen datos nuevos.
@@ -16,7 +67,7 @@ export function ProgressScreen() {
     return () => clearInterval(id)
   }, [])
   const idleSec = p?.lastActivity ? Math.max(0, Math.round((clock - p.lastActivity) / 1000)) : 0
-  const stuck = !!p && !paused && !p.waitingDisk && p.phase !== 'save' && idleSec >= 90
+  const stuck = !!p && !paused && !p.waitingDisk && p.phase !== 'save' && p.phase !== 'confirm' && idleSec >= 90
   // Diagnóstico de lentitud: copiando a menos de 1,5 MB/s durante más de un minuto.
   const viaWifi = cableDevices.filter((c) => /Enlace móvil/i.test(c.name))
   const slow = !!p && !paused && !p.waitingDisk && (p.phase === 'copy' || p.phase === 'verify') && p.bytesPerSec > 0 && p.bytesPerSec < 1.5e6 && Date.now() - since > 60_000
@@ -49,7 +100,9 @@ export function ProgressScreen() {
           )}
         </Alert>
       )}
-      {stuck && (
+      {preview && <Summary preview={preview} onAnswer={answerPreview} />}
+
+      {stuck && !preview && (
         <Alert tone="error">
           <p className="font-medium">No hay actividad desde hace {formatDuration(idleSec)}: parece atascado.</p>
           <ul className="mt-1 list-disc pl-5">

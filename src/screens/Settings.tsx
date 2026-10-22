@@ -89,6 +89,12 @@ export function SettingsScreen() {
           </>
         )}
         <Toggle
+          label="Resumen antes de empezar"
+          hint="Tras buscar las fotos y antes de copiar nada: cuántas hay, cuántas son nuevas, cuánto ocupan y cuánto tardará. Eliges copiar todo o solo lo nuevo. (La copia automática y la del móvil por internet no lo muestran.)"
+          checked={settings.showSummary}
+          onChange={(v) => saveSettings({ ...settings, showSummary: v })}
+        />
+        <Toggle
           label="Guardar las fotos HEIC (iPhone) como JPG"
           hint="Se abren en cualquier programa sin extensiones. Se convierten a máxima resolución y calidad alta, con su fecha, cámara y ubicación, y cada JPG se comprueba antes de guardarlo; si alguna no se puede convertir bien, se guarda en HEIC. En el disco queda solo el JPG."
           checked={settings.heicToJpg}

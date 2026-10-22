@@ -1,6 +1,6 @@
 import { flushSync } from 'react-dom'
 import { create } from 'zustand'
-import { runBackup, type BackupReport } from '../core/backup/engine'
+import { runBackup, type BackupReport, type PreSummary } from '../core/backup/engine'
 import type { Progress } from '../core/backup/progress'
 import { mergeForced } from '../core/backup/report'
 import { Controller } from '../core/control'
@@ -90,6 +90,9 @@ interface AppState {
   start(forcePaths?: string[], resumeFolder?: string, opts?: { auto?: boolean }): Promise<void>
   /** Copia que se quedó a medias en este navegador (para ofrecer continuarla). */
   pendingRun: PendingRun | null
+  /** Resumen antes de empezar (mientras espera la decisión). */
+  preview: (PreSummary & { speed: number | null }) | null
+  answerPreview(choice: 'all' | 'new' | 'cancel'): void
   discardPendingRun(): Promise<void>
   pause(): void
   resume(): void
@@ -101,6 +104,8 @@ interface AppState {
 }
 
 let controller: Controller | null = null
+/** Respuesta pendiente al resumen antes de empezar. */
+let previewResolve: ((c: 'all' | 'new' | 'cancel') => void) | null = null
 /** Primer tramo de la ruta de las fotos elegidas con el selector de archivos. */
 export const PICKED_LABEL = 'Fotos elegidas'
 const BASE_TITLE = 'Backup de fotos'
@@ -143,6 +148,14 @@ export const useApp = create<AppState>((set, get) => ({
   cableDevices: [],
   connector: null,
   pendingRun: null,
+  preview: null,
+
+  answerPreview(choice) {
+    const resolve = previewResolve
+    previewResolve = null
+    set({ preview: null })
+    resolve?.(choice)
+  },
 
   async discardPendingRun() {
     set({ pendingRun: null })
@@ -417,6 +430,8 @@ export const useApp = create<AppState>((set, get) => ({
     controller?.cancel()
     void io.cancel()
     set({ paused: false })
+    // Si estaba esperando en el resumen, se responde "no copiar".
+    if (previewResolve) get().answerPreview('cancel')
   },
 
   async saveSettings(s) {
@@ -639,7 +654,11 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
   if (remote) cableName = remote.name
   // "Solo lo nuevo": índice de lo que ya hay en las copias del disco (solo se leen sus registros, no las fotos).
   // La copia automática siempre es de lo nuevo (si no, cada vez que se conecta el móvil se copiaría todo otra vez).
-  const known = snapshot && (settings.onlyNew || auto) && !force ? await knownOnDisk(disk) : null
+  const onlyNew = snapshot && (settings.onlyNew || auto) && !force
+  // Resumen antes de empezar: solo si hay alguien delante (no en la automática ni en la del móvil por internet).
+  const ask = settings.showSummary && !auto && !remote && !force
+  const known = onlyNew || (ask && snapshot) ? await knownOnDisk(disk) : null
+  const lastSpeed = ask ? await db.getLastSpeed() : null
   let badge = -1
   let report: BackupReport
   try {
@@ -650,7 +669,16 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
       runFolderName: force && previous?.folder ? previous.folder : resumeFolder,
       // Misma estructura de carpetas que en el móvil; con un solo origen, sin repetir su nombre.
       mirror: snapshot && settings.keepStructure ? { stripFirst: originCount === 1 } : undefined,
-      knownElsewhere: known ? (h) => known.get(h) : undefined,
+      knownElsewhere: known && onlyNew ? (h) => known.get(h) : undefined,
+      estimateKnown: known ? (h) => known.get(h) : undefined,
+      confirm: ask
+        ? (summary) =>
+            new Promise((resolve) => {
+              previewResolve = resolve
+              useApp.setState({ preview: { ...summary, speed: lastSpeed } })
+              notify('Resumen listo', `${summary.all.count} fotos y vídeos para copiar: confirma en la app para empezar.`)
+            })
+        : undefined,
       // HEIC → JPG comprobado (en un disco cifrado no: allí se guarda todo tal cual).
       convertHeic: settings.heicToJpg && !disk.encrypted ? (b) => io.heicToJpeg(b) : undefined,
       sourceName: () => cableName,
@@ -763,11 +791,15 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
     await useApp.getState().updateDisk(disk.key, { lastBackupAt: report.finishedAt, lastBackupFiles: report.copied.length + report.alreadyOnDisk.length })
   }
   await saveDiskIndex(disk)
+  // Cancelada en el resumen, sin copiar nada: no queda una carpeta vacía (salvo si se estaba continuando una copia).
+  if (report.previewCancelled && report.folder && !resumeFolder && report.copied.length === 0) {
+    await disk.handle.removeEntry(report.folder, { recursive: true }).catch(() => {})
+  }
   // Velocidad real del último backup (para estimar cuánto tardaría añadir algo, p. ej. WhatsApp Sent).
   const secs = (new Date(report.finishedAt).getTime() - new Date(report.startedAt).getTime()) / 1000
   if (report.bytesCopied > 50 * 1024 ** 2 && secs > 30) await db.setLastSpeed(report.bytesCopied / secs)
   // Copia a medias: se recuerda para ofrecer continuarla en la misma carpeta.
-  if (!force && report.folder) {
+  if (!force && report.folder && !report.previewCancelled) {
     const pending = report.outcome === 'completed' ? null : { diskKey: disk.key, folder: report.folder, startedAt: report.startedAt, copied: report.copied.length + report.alreadyOnDisk.length }
     useApp.setState({ pendingRun: pending })
     await db.setPendingRun(pending)
