@@ -52,7 +52,18 @@ public sealed class MainForm : Form
     BackupResult? _last;
     System.Windows.Forms.Timer? _refreshDebounce;
 
-    public MainForm()
+    readonly NotifyIcon _tray = new() { Text = "Backup de fotos" };
+    readonly CheckBox _startup = new()
+    {
+        Text = "Abrir al iniciar Windows y seguir en segundo plano (icono junto al reloj): la web siempre encuentra el conector",
+        AutoSize = true,
+        MaximumSize = new Size(620, 0),
+        Margin = new Padding(0, 0, 0, 8),
+    };
+    bool _exiting;
+    bool _toldTray;
+
+    public MainForm(bool startHidden = false)
     {
         Text = "Backup de fotos";
         StartPosition = FormStartPosition.CenterScreen;
@@ -67,7 +78,9 @@ public sealed class MainForm : Form
         layout.Controls.Add(new Label { Text = "Backup de fotos del móvil", AutoSize = true, Font = new Font("Segoe UI Semibold", 18f) });
         layout.Controls.Add(Hint("Copia TODAS las fotos y vídeos del móvil (todas sus carpetas) en una carpeta nueva con el nombre del móvil y la fecha y hora. Cada archivo se verifica. En el móvil no se borra ni se cambia nada."));
         layout.Controls.Add(_connector);
+        layout.Controls.Add(_startup);
         StartConnector();
+        SetupTray(startHidden);
 
         layout.Controls.Add(SectionTitle("1. Móvil"));
         layout.Controls.Add(Row(_devices, _refresh));
@@ -143,6 +156,38 @@ public sealed class MainForm : Form
         {
             SetConnector(false, "Ya hay otra ventana de Backup de fotos abierta: la web usará esa.");
         }
+    }
+
+    // ---- Segundo plano ----
+
+    void SetupTray(bool startHidden)
+    {
+        _tray.Icon = Icon ?? SystemIcons.Application;
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Abrir", null, (_, _) => ShowFromTray());
+        menu.Items.Add("Salir", null, (_, _) =>
+        {
+            _exiting = true;
+            Close();
+        });
+        _tray.ContextMenuStrip = menu;
+        _tray.DoubleClick += (_, _) => ShowFromTray();
+        _tray.Visible = true;
+        try { _startup.Checked = Startup.Enabled; } catch { _startup.Enabled = false; }
+        _startup.CheckedChanged += (_, _) =>
+        {
+            try { Startup.Set(_startup.Checked); }
+            catch (Exception ex) { MessageBox.Show(this, $"No se ha podido cambiar el inicio con Windows: {ex.Message}", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        };
+        // Arrancado con Windows: directamente junto al reloj, sin ventana.
+        if (startHidden) Shown += (_, _) => BeginInvoke(new Action(Hide));
+    }
+
+    void ShowFromTray()
+    {
+        Show();
+        WindowState = FormWindowState.Normal;
+        Activate();
     }
 
     void SetConnector(bool on, string? activity)
@@ -375,6 +420,8 @@ public sealed class MainForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _tray.Visible = false;
+        _tray.Dispose();
         _server?.Dispose();
         _hub.Dispose();
         base.OnFormClosed(e);
@@ -382,6 +429,18 @@ public sealed class MainForm : Form
 
     void OnClosing(object? sender, FormClosingEventArgs e)
     {
+        // En segundo plano: cerrar la ventana la deja junto al reloj (el conector sigue activo). Para salir: icono → Salir.
+        if (!_exiting && _startup.Checked && e.CloseReason == CloseReason.UserClosing)
+        {
+            e.Cancel = true;
+            Hide();
+            if (!_toldTray)
+            {
+                _toldTray = true;
+                _tray.ShowBalloonTip(4000, "Backup de fotos sigue activo", "Está junto al reloj. Para cerrarlo del todo: clic derecho en el icono → Salir.", ToolTipIcon.Info);
+            }
+            return;
+        }
         if (_cts is null) return;
         if (MessageBox.Show(this, "Hay un backup en marcha. ¿Cancelarlo y salir? Lo ya copiado queda guardado y verificado.", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
         {

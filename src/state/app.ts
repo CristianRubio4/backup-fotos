@@ -19,6 +19,7 @@ import { io, POOL_SIZE, workerExif, workerHasher } from '../platform/io'
 import { BATTERY_PAUSE, BATTERY_WARN, keepScreenOn, readBattery, watchBattery, type BatteryInfo, type WakeState } from '../platform/power'
 import { checkReadable, isInside, walkSource } from '../platform/walk'
 import { connectorInfo, scanCable, type CableDevice } from '../platform/connector'
+import { AutoTrigger } from '../core/auto'
 import { knownOnDisk } from './copies'
 import { diskTarget, isLocked } from './keys'
 
@@ -86,7 +87,7 @@ interface AppState {
    * Hace el backup; con `forcePaths`, copia solo esos descartados ("Copiar igualmente");
    * con `resumeFolder`, continúa esa copia interrumpida (lo ya copiado se salta sin leerlo).
    */
-  start(forcePaths?: string[], resumeFolder?: string): Promise<void>
+  start(forcePaths?: string[], resumeFolder?: string, opts?: { auto?: boolean }): Promise<void>
   /** Copia que se quedó a medias en este navegador (para ofrecer continuarla). */
   pendingRun: PendingRun | null
   discardPendingRun(): Promise<void>
@@ -320,7 +321,8 @@ export const useApp = create<AppState>((set, get) => ({
     set({ disks: get().disks.map((x) => (x.key === key ? rec : x)) })
   },
 
-  async start(forcePaths, resumeFolder) {
+  async start(forcePaths, resumeFolder, opts) {
+    const auto = !!opts?.auto
     const { running } = get()
     if (running || !capabilities.fsAccess) return
     const disk = activeDisk()
@@ -334,10 +336,10 @@ export const useApp = create<AppState>((set, get) => ({
       return
     }
 
-    // Primero los permisos: requestPermission necesita el clic del usuario.
-    const dp = await ensurePermission(disk.handle, 'readwrite', true)
+    // Primero los permisos: requestPermission necesita el clic del usuario (en la copia automática no lo hay: solo se comprueba).
+    const dp = await ensurePermission(disk.handle, 'readwrite', !auto)
     if (dp !== 'granted') {
-      set({ notice: 'Sin permiso de acceso al disco no se puede hacer el backup.' })
+      set({ notice: auto ? 'Copia automática: el disco no tiene permiso todavía. Pulsa "Hacer backup" una vez para concederlo.' : 'Sin permiso de acceso al disco no se puede hacer el backup.' })
       return
     }
     const sources: SourceView[] = []
@@ -345,7 +347,7 @@ export const useApp = create<AppState>((set, get) => ({
     for (const s of get().sources) {
       let perm: PermissionState
       try {
-        perm = await ensurePermission(s.handle, 'read', true)
+        perm = await ensurePermission(s.handle, 'read', !auto)
       } catch (err) {
         skipped.push(`${s.name} (${friendlyError(err)})`)
         continue
@@ -384,7 +386,7 @@ export const useApp = create<AppState>((set, get) => ({
     }
     // Batería: con el disco conectado por OTG el móvil normalmente no se carga.
     const battery = await readBattery()
-    if (!force && battery && !battery.charging && battery.level < BATTERY_WARN) {
+    if (!force && !auto && battery && !battery.charging && battery.level < BATTERY_WARN) {
       const ok = confirm(
         `La batería está al ${Math.round(battery.level * 100)} %. El backup puede tardar y se pausará solo si baja del ${BATTERY_PAUSE * 100} %.\n\n` +
           'Si el disco está conectado al móvil por USB (OTG), el móvil normalmente no se carga a la vez, salvo con un hub USB con alimentación.\n\n¿Empezar igualmente?',
@@ -394,8 +396,9 @@ export const useApp = create<AppState>((set, get) => ({
     if (skipped.length) set({ notice: `Se omiten estas carpetas (sin permiso o no válidas): ${skipped.join(', ')}.` })
 
     // Avisos del sistema al terminar (se pide permiso una vez, aprovechando el clic).
-    if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission().catch(() => {})
-    await withBackupLock(() => runJob(disk, sources, force, cable, resumeFolder))
+    if (!auto && 'Notification' in window && Notification.permission === 'default') void Notification.requestPermission().catch(() => {})
+    if (auto) notify('Copia automática', 'Móvil conectado: copiando lo nuevo…')
+    await withBackupLock(() => runJob(disk, sources, force, cable, resumeFolder, undefined, auto))
   },
 
   pause() {
@@ -481,6 +484,31 @@ function startDiskPolling() {
   }
   void tick()
   polling = setInterval(tick, DISK_POLL_MS)
+  setInterval(() => void autoTick(), 5000)
+}
+
+const autoTrigger = new AutoTrigger()
+
+/** Copia automática: si un móvil elegido aparece por el cable (BackupFotos.exe), se copia lo nuevo sin pulsar nada. */
+async function autoTick() {
+  const s = useApp.getState()
+  if (!s.ready || !s.settings.autoBackup || s.cableDevices.length === 0) return
+  const info = await connectorInfo(2000)
+  const fresh = autoTrigger.check(info?.devices.map((d) => d.id) ?? [], s.cableDevices.map((c) => c.id))
+  useApp.setState({ connector: info?.devices ?? null })
+  if (!fresh.length || useApp.getState().running) return
+  autoTrigger.ran(fresh)
+  await useApp.getState().start(undefined, undefined, { auto: true })
+}
+
+/** Aviso del sistema (si hay permiso). */
+function notify(title: string, body: string) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+  try {
+    new Notification(title, { body, icon: `${import.meta.env.BASE_URL}icon-192.png`, tag: 'backup' })
+  } catch {
+    // Solo desde el service worker en algunos navegadores: no es imprescindible.
+  }
 }
 
 /**
@@ -581,7 +609,7 @@ export async function startRemote(remote: RemoteSource, diskKey?: string): Promi
   return result
 }
 
-async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: SourceFile[], cable: CableDevice[] = [], resumeFolder?: string, remote?: RemoteSource) {
+async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: SourceFile[], cable: CableDevice[] = [], resumeFolder?: string, remote?: RemoteSource, auto = false) {
   let disk = initialDisk
   const { settings, device, report: previous } = useApp.getState()
   const ctl = new Controller()
@@ -610,7 +638,8 @@ async function runJob(initialDisk: DiskRecord, sources: SourceView[], force?: So
   const originCount = remote ? 1 : cable.length + sources.length + (useApp.getState().pickedFiles.length ? 1 : 0)
   if (remote) cableName = remote.name
   // "Solo lo nuevo": índice de lo que ya hay en las copias del disco (solo se leen sus registros, no las fotos).
-  const known = snapshot && settings.onlyNew && !force ? await knownOnDisk(disk) : null
+  // La copia automática siempre es de lo nuevo (si no, cada vez que se conecta el móvil se copiaría todo otra vez).
+  const known = snapshot && (settings.onlyNew || auto) && !force ? await knownOnDisk(disk) : null
   let badge = -1
   let report: BackupReport
   try {

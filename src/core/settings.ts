@@ -39,6 +39,8 @@ export interface Settings {
   whatsappSent: boolean
   /** Guardar las fotos HEIC (iPhone) como JPG comprobado, sin la HEIC. */
   heicToJpg: boolean
+  /** Al conectar por cable un móvil elegido como origen, copiar solo lo nuevo sin pulsar nada (con la web abierta). */
+  autoBackup: boolean
   /** Avisar si un disco lleva más de estos días sin backup. */
   staleDays: number
   /** Recordar comprobar la integridad del disco cada estos meses. */
@@ -72,6 +74,7 @@ export const DEFAULT_SETTINGS: Settings = {
   keepStructure: true,
   whatsappSent: true,
   heicToJpg: true,
+  autoBackup: false,
   staleDays: 30,
   integrityMonths: 6,
   zipBatchMB: typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 300 : 1000,

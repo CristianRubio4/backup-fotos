@@ -320,7 +320,7 @@ function Step({ done, children }: { done: boolean; children: ReactNode }) {
 }
 
 export function HomeScreen() {
-  const { sources, disks, diskStates, settings, running, addSource, addDisk, start, go, pickedFiles, addPickedFiles, clearPickedFiles, cableDevices, pendingRun, discardPendingRun } = useApp()
+  const { sources, disks, diskStates, settings, saveSettings, running, addSource, addDisk, start, go, pickedFiles, addPickedFiles, clearPickedFiles, cableDevices, pendingRun, discardPendingRun } = useApp()
   useKeys()
   const [showTips, setShowTips] = useState(false)
   const [showPhone, setShowPhone] = useState(false)
@@ -504,6 +504,26 @@ export function HomeScreen() {
             )}
           </div>
           {(cableDevices.length > 0 || sources.length > 0) && <SentOption />}
+          {cableDevices.length > 0 && (
+            <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-xl border border-line p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                checked={settings.autoBackup}
+                disabled={running}
+                onChange={(e) => {
+                  void saveSettings({ ...settings, autoBackup: e.target.checked })
+                  if (e.target.checked && 'Notification' in window && Notification.permission === 'default') void Notification.requestPermission().catch(() => {})
+                }}
+              />
+              <span>
+                <b>Copia automática al conectar el móvil</b>
+                <span className="mt-0.5 block text-xs text-muted">
+                  Con esta web abierta en el PC y BackupFotos.exe en marcha, al enchufar el móvil se copia solo lo nuevo, sin pulsar nada, y te avisa al terminar.
+                </span>
+              </span>
+            </label>
+          )}
           {showCable && <CablePanel />}
           {showPhone && (
             <div className="animate-rise mt-2 space-y-2 rounded-xl bg-surface-2 p-3 text-xs leading-relaxed">
