@@ -38,25 +38,24 @@ describe('resumen antes de empezar', () => {
     const { t, base } = setup()
     // Primera copia: 3 fotos.
     const first = await runBackup({ ...base(new Date(2026, 9, 20, 10, 0)), scan: async () => ({ files: phone(3), ignored: [] }) })
-    const known = new Map((await (async () => first.copied.map((c) => c.diskPath!))()).map((p) => [p, p]))
-    void known
+
     // Índice de lo ya guardado (como knownOnDisk en la app).
     const manifest = JSON.parse((await t.readText(`${first.folder}/.backup-ignore/.backup-manifest.json`))!) as { entries: Array<{ hash: string; diskPath: string }> }
     const onDisk = new Map(manifest.entries.map((e) => [e.hash, e]))
-    let seen: PreSummary | null = null
+    const box: { seen?: PreSummary } = {}
     const second = await runBackup({
       ...base(new Date(2026, 9, 21, 10, 0)),
       scan: async () => ({ files: phone(5), ignored: [] }),
       estimateKnown: (h) => onDisk.get(h) as never,
       confirm: async (s) => {
-        seen = s
+        box.seen = s
         return 'new'
       },
     })
-    expect(seen!.found).toBe(5)
-    expect(seen!.all.count).toBe(5)
-    expect(seen!.fresh.count).toBe(2)
-    expect(seen!.fresh.bytes).toBeLessThan(seen!.all.bytes)
+    expect(box.seen!.found).toBe(5)
+    expect(box.seen!.all.count).toBe(5)
+    expect(box.seen!.fresh.count).toBe(2)
+    expect(box.seen!.fresh.bytes).toBeLessThan(box.seen!.all.bytes)
     expect(second.copied.map((c) => c.sourcePath)).toEqual(['Móvil/DCIM/IMG_3.jpg', 'Móvil/DCIM/IMG_4.jpg'])
     expect(second.duplicates).toHaveLength(3)
   })
